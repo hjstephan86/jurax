@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>JuraX – Verfahrensverwaltung</title>
+<style>
+  :root {
+    --bg: #f2f4f6; --card: #fff; --accent: #3b5b6e;
+    --accent2: #2e4757; --border: #dde2e8; --text: #1e2a35;
+    --muted: #607080; --row-hover: #eef3f7;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', sans-serif; background: var(--bg); color: var(--text); }
+
+  header {
+    background: var(--accent); color: #fff;
+    padding: 13px 24px; display: flex;
+    align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    box-shadow: 0 2px 8px rgba(0,0,0,.18);
+  }
+  header h1 { font-size: 1.1rem; font-weight: 600; letter-spacing: .02em; }
+
+  .toolbar {
+    padding: 12px 20px; background: var(--card);
+    border-bottom: 1px solid var(--border);
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    position: sticky; top: 50px; z-index: 99;
+  }
+  .toolbar input, .toolbar select {
+    padding: 7px 12px; border: 1.5px solid var(--border);
+    border-radius: 7px; font-size: .88rem; outline: none;
+    transition: border-color .2s; background: #fff;
+  }
+  .toolbar input:focus, .toolbar select:focus { border-color: var(--accent); }
+  #azInput { flex: 2; min-width: 160px; }
+  #jahrInput, #monatInput, #tagInput { width: 80px; }
+  #resultInfo { font-size: .8rem; color: var(--muted); white-space: nowrap; margin-left: auto; }
+
+  .btn {
+    padding: 7px 15px; border: none; border-radius: 7px;
+    cursor: pointer; font-size: .86rem; font-weight: 500;
+    background: var(--accent); color: #fff; transition: opacity .15s;
+  }
+  .btn:hover { opacity: .85; }
+  .btn-sm { padding: 3px 9px; font-size: .78rem; }
+  .btn-danger  { background: #c0392b; }
+  .btn-warning { background: #7d6608; }
+  .btn-pdf     { background: #1a5c3a; }
+  .btn-outline {
+    background: transparent; border: 1.5px solid var(--border);
+    color: var(--text); padding: 7px 15px; border-radius: 7px;
+    cursor: pointer; font-size: .86rem;
+  }
+
+  #scrollContainer { overflow-y: auto; height: calc(100vh - 100px); position: relative; }
+  #virtualSpacer   { width: 100%; }
+  #visibleRows     { position: absolute; left: 0; right: 0; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .84rem; }
+  thead th {
+    background: #e8ecf0; position: sticky; top: 0; z-index: 10;
+    padding: 9px 10px; text-align: left; font-weight: 600;
+    border-bottom: 2px solid var(--border); white-space: nowrap;
+  }
+  tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+  tbody tr:hover { background: var(--row-hover); }
+  td { padding: 7px 10px; vertical-align: middle; }
+
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 99px;
+    font-size: .73rem; font-weight: 600;
+  }
+  .badge-offen       { background: #d4eaff; color: #1a4a80; }
+  .badge-geschlossen { background: #d4f5e0; color: #145228; }
+  .badge-ruhend      { background: #fff3cd; color: #7a5200; }
+  .badge-erledigt    { background: #e8e8e8; color: #444; }
+
+  /* Upload-Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.45); z-index: 200;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--card); border-radius: 11px;
+    padding: 26px; width: min(640px, 96vw);
+    max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0,0,0,.22);
+  }
+  .modal h2 { font-size: 1rem; margin-bottom: 16px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+  .form-grid .full { grid-column: 1/-1; }
+  label { display: block; font-size: .77rem; font-weight: 600;
+          margin-bottom: 3px; color: var(--muted); }
+  .modal input, .modal select, .modal textarea {
+    width: 100%; padding: 6px 9px; border: 1.5px solid var(--border);
+    border-radius: 6px; font-size: .86rem; outline: none;
+    transition: border-color .2s;
+  }
+  .modal input:focus, .modal select:focus, .modal textarea:focus
+    { border-color: var(--accent); }
+  .modal-footer { margin-top: 18px; display: flex; gap: 10px; justify-content: flex-end; }
+
+  /* PDF-Viewer */
+  #pdfViewer {
+    display: none; position: fixed; inset: 0; z-index: 300;
+    background: rgba(0,0,0,.7); align-items: center; justify-content: center;
+  }
+  #pdfViewer.open { display: flex; }
+  #pdfViewer iframe {
+    width: min(900px, 96vw); height: 90vh;
+    border: none; border-radius: 8px;
+  }
+  #pdfClose {
+    position: absolute; top: 16px; right: 20px;
+    background: #fff; border: none; border-radius: 50%;
+    width: 34px; height: 34px; font-size: 1.1rem;
+    cursor: pointer; font-weight: bold; color: #333;
+  }
+
+  .toast {
+    position: fixed; bottom: 20px; right: 20px; z-index: 400;
+    background: #1e2a35; color: #fff; padding: 9px 16px;
+    border-radius: 7px; font-size: .86rem; opacity: 0;
+    transition: opacity .3s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+
+  /* Wurzelverzeichnis-Konfiguration */
+  #rootDirBar {
+    background: #eef3f7; border-bottom: 1px solid var(--border);
+    padding: 6px 20px; font-size: .8rem; color: var(--muted);
+    display: flex; align-items: center; gap: 10px;
+  }
+  #rootDirInput {
+    flex: 1; padding: 4px 8px; border: 1.5px solid var(--border);
+    border-radius: 5px; font-size: .8rem;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>⚖ JuraX – Verfahrensverwaltung</h1>
+  <button class="btn" onclick="openUploadModal()">+ Verfahren / PDF hochladen</button>
+</header>
+
+<!-- Wurzelverzeichnis-Anzeige -->
+<div id="rootDirBar">
+  <span>Wurzelverzeichnis:</span>
+  <input id="rootDirInput" type="text" value="~/jurax-docs"
+    title="Wird als jurax.rootdir System-Property an WildFly übergeben"/>
+  <button class="btn" style="padding:4px 10px;font-size:.78rem"
+    onclick="toast('Wurzelverzeichnis wird serverseitig per System-Property gesetzt.')">
+    ℹ Info
+  </button>
+</div>
+
+<!-- Suchleiste -->
+<div class="toolbar">
+  <input id="azInput" type="text" placeholder="Aktenzeichen suchen (z.B. 14 C 123, 14c123, 14-C-123 …)"
+    autocomplete="off" spellcheck="false"/>
+  <input id="jahrInput"  type="number" placeholder="Jahr"  min="1900" max="2099"/>
+  <input id="monatInput" type="number" placeholder="Monat" min="1"    max="12"/>
+  <input id="tagInput"   type="number" placeholder="Tag"   min="1"    max="31"/>
+  <button class="btn" onclick="searchDatum()">📅 Datum</button>
+  <button class="btn-outline" onclick="reset()">↺ Zurücksetzen</button>
+  <span id="resultInfo">Lade …</span>
+</div>
+
+<!-- Virtuelle Tabelle -->
+<div id="scrollContainer">
+  <div id="virtualSpacer">
+    <table>
+      <thead>
+        <tr>
+          <th>Aktenzeichen</th><th>Bezeichnung</th><th>Gericht</th>
+          <th>Eingang</th><th>Status</th><th>Datei</th><th>Aktionen</th>
+        </tr>
+      </thead>
+    </table>
+    <div id="visibleRows"></div>
+  </div>
+</div>
+
+<!-- Upload/Bearbeiten-Modal -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <h2 id="modalTitle">Verfahren / PDF hochladen</h2>
+    <div class="form-grid">
+      <div class="full">
+        <label>Aktenzeichen *</label>
+        <input id="fAz" placeholder="z.B. 14 C 123/24"/>
+      </div>
+      <div class="full">
+        <label>Bezeichnung</label>
+        <input id="fBez" placeholder="Kurzbeschreibung des Verfahrens"/>
+      </div>
+      <div>
+        <label>Gericht</label>
+        <input id="fGericht" placeholder="z.B. Amtsgericht Bielefeld"/>
+      </div>
+      <div>
+        <label>Status</label>
+        <select id="fStatus">
+          <option value="offen">Offen</option>
+          <option value="geschlossen">Geschlossen</option>
+          <option value="ruhend">Ruhend</option>
+          <option value="erledigt">Erledigt</option>
+        </select>
+      </div>
+      <div>
+        <label>Eingangsdatum (= Ablage-Datum im Ordner)</label>
+        <input id="fEingang" type="date"/>
+      </div>
+      <div>
+        <label>Urteilsdatum</label>
+        <input id="fUrteil" type="date"/>
+      </div>
+      <div class="full">
+        <label>PDF-Datei</label>
+        <input id="fDatei" type="file" accept="application/pdf"/>
+      </div>
+      <div class="full">
+        <label>Notizen</label>
+        <textarea id="fNotizen" rows="3" placeholder="Interne Notizen …"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeModal()">Abbrechen</button>
+      <button class="btn" onclick="saveVerfahren()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF-Viewer -->
+<div id="pdfViewer">
+  <button id="pdfClose" onclick="closePdf()">✕</button>
+  <iframe id="pdfFrame" src=""></iframe>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API    = '/api/verfahren';
+const ROW_H  = 44;
+const BUFFER = 5;
+let allData  = [];
+let editId   = null;
+let debTimer = null;
+
+// ── Virtuelles Scrolling ──────────────────────────────────
+const scrollEl = document.getElementById('scrollContainer');
+const spacerEl = document.getElementById('virtualSpacer');
+const rowsEl   = document.getElementById('visibleRows');
+
+function renderVisible() {
+  const top    = scrollEl.scrollTop;
+  const ch     = scrollEl.clientHeight;
+  const total  = allData.length;
+  const start  = Math.max(0, Math.floor(top / ROW_H) - BUFFER);
+  const end    = Math.min(total, Math.ceil((top + ch) / ROW_H) + BUFFER);
+
+  rowsEl.style.transform = `translateY(${start * ROW_H}px)`;
+  spacerEl.style.height  = `${total * ROW_H + 46}px`;
+
+  let h = '<table><tbody>';
+  for (let i = start; i < end; i++) {
+    const v = allData[i];
+    const az  = v.aktenzeichen ?? '—';
+    const bez = v.bezeichnung  ?? '—';
+    const ger = v.gericht      ?? '—';
+    const ein = v.datumEingang ? v.datumEingang.substring(0,10) : '—';
+    const pdf = v.dateiName ? `<button class="btn btn-sm btn-pdf" onclick="openPdf(${v.id})">📄 PDF</button>` : '—';
+    h += `<tr>
+      <td><strong>${az}</strong></td>
+      <td>${bez}</td><td>${ger}</td><td>${ein}</td>
+      <td><span class="badge badge-${v.status}">${statusLabel(v.status)}</span></td>
+      <td>${pdf}</td>
+      <td>
+        <button class="btn btn-sm btn-warning" onclick="editVerfahren(${v.id})">✏</button>
+        <button class="btn btn-sm btn-danger"  onclick="deleteVerfahren(${v.id})">🗑</button>
+      </td>
+    </tr>`;
+  }
+  h += '</tbody></table>';
+  rowsEl.innerHTML = h;
+}
+
+scrollEl.addEventListener('scroll', renderVisible);
+window.addEventListener('resize', renderVisible);
+
+function statusLabel(s) {
+  return {offen:'Offen',geschlossen:'Geschlossen',ruhend:'Ruhend',erledigt:'Erledigt'}[s] ?? s;
+}
+
+// ── Datenladen ────────────────────────────────────────────
+async function loadRandom() {
+  showInfo('Lade …');
+  const r = await fetch(`${API}/random?limit=30`);
+  allData = await r.json();
+  showInfo(`${allData.length} zufällige Verfahren`);
+  renderVisible();
+}
+
+async function searchAz(q) {
+  showInfo('Suche …');
+  const r = await fetch(`${API}/search?az=${encodeURIComponent(q)}`);
+  allData = await r.json();
+  const n = allData.length;
+  showInfo(`${n >= 500 ? 'Max. 500' : n} Ergebnis${n !== 1 ? 'se' : ''}`);
+  scrollEl.scrollTop = 0;
+  renderVisible();
+}
+
+async function searchDatum() {
+  const jahr  = document.getElementById('jahrInput').value;
+  const monat = document.getElementById('monatInput').value;
+  const tag   = document.getElementById('tagInput').value;
+  let url = `${API}/datum?`;
+  if (jahr)  url += `jahr=${jahr}&`;
+  if (monat) url += `monat=${monat}&`;
+  if (tag)   url += `tag=${tag}&`;
+  showInfo('Suche nach Datum …');
+  const r = await fetch(url);
+  allData = await r.json();
+  const n = allData.length;
+  showInfo(`${n >= 500 ? 'Max. 500' : n} Ergebnis${n !== 1 ? 'se' : ''}`);
+  scrollEl.scrollTop = 0;
+  renderVisible();
+}
+
+function reset() {
+  document.getElementById('azInput').value    = '';
+  document.getElementById('jahrInput').value  = '';
+  document.getElementById('monatInput').value = '';
+  document.getElementById('tagInput').value   = '';
+  loadRandom();
+}
+
+// Aktenzeichen-Suche mit 300 ms Debouncing
+document.getElementById('azInput').addEventListener('input', e => {
+  clearTimeout(debTimer);
+  const q = e.target.value.trim();
+  if (!q) { loadRandom(); return; }
+  debTimer = setTimeout(() => searchAz(q), 300);
+});
+
+function showInfo(t) { document.getElementById('resultInfo').textContent = t; }
+
+// ── PDF anzeigen ──────────────────────────────────────────
+function openPdf(id) {
+  document.getElementById('pdfFrame').src = `${API}/${id}/pdf`;
+  document.getElementById('pdfViewer').classList.add('open');
+}
+function closePdf() {
+  document.getElementById('pdfViewer').classList.remove('open');
+  document.getElementById('pdfFrame').src = '';
+}
+
+// ── Modal ─────────────────────────────────────────────────
+function openUploadModal(data = null) {
+  editId = data ? data.id : null;
+  document.getElementById('modalTitle').textContent =
+    data ? 'Verfahren bearbeiten' : 'Verfahren / PDF hochladen';
+  document.getElementById('fAz').value      = data?.aktenzeichen ?? '';
+  document.getElementById('fBez').value     = data?.bezeichnung  ?? '';
+  document.getElementById('fGericht').value = data?.gericht      ?? '';
+  document.getElementById('fStatus').value  = data?.status       ?? 'offen';
+  document.getElementById('fEingang').value = data?.datumEingang?.substring(0,10) ?? '';
+  document.getElementById('fUrteil').value  = data?.datumUrteil?.substring(0,10)  ?? '';
+  document.getElementById('fNotizen').value = data?.notizen      ?? '';
+  document.getElementById('modalOverlay').classList.add('open');
+}
+function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+function closeModalOutside(e) { if (e.target.id==='modalOverlay') closeModal(); }
+
+async function saveVerfahren() {
+  const az = document.getElementById('fAz').value.trim();
+  if (!az) { toast('Aktenzeichen ist Pflichtfeld.'); return; }
+
+  const dateiInput = document.getElementById('fDatei');
+  const hatDatei   = dateiInput.files && dateiInput.files.length > 0;
+
+  if (editId) {
+    // PUT (nur Metadaten)
+    const body = {
+      aktenzeichen: az,
+      bezeichnung:  document.getElementById('fBez').value,
+      gericht:      document.getElementById('fGericht').value,
+      status:       document.getElementById('fStatus').value,
+      datumEingang: document.getElementById('fEingang').value || null,
+      datumUrteil:  document.getElementById('fUrteil').value  || null,
+      notizen:      document.getElementById('fNotizen').value,
+    };
+    const r = await fetch(`${API}/${editId}`, {
+      method: 'PUT', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { toast('Fehler beim Aktualisieren.'); return; }
+    toast('Verfahren aktualisiert.');
+  } else if (hatDatei) {
+    // POST /upload (Multipart)
+    const fd = new FormData();
+    fd.append('aktenzeichen', az);
+    fd.append('bezeichnung',  document.getElementById('fBez').value);
+    fd.append('gericht',      document.getElementById('fGericht').value);
+    fd.append('status',       document.getElementById('fStatus').value);
+    fd.append('datumEingang', document.getElementById('fEingang').value);
+    fd.append('notizen',      document.getElementById('fNotizen').value);
+    fd.append('dateiName',    dateiInput.files[0].name);
+    fd.append('dateiDaten',   dateiInput.files[0]);
+    const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+    if (!r.ok) { toast('Fehler beim Upload.'); return; }
+    toast('Verfahren und PDF gespeichert.');
+  } else {
+    // POST (nur Metadaten, ohne Datei)
+    const body = {
+      aktenzeichen: az,
+      bezeichnung:  document.getElementById('fBez').value,
+      gericht:      document.getElementById('fGericht').value,
+      status:       document.getElementById('fStatus').value,
+      datumEingang: document.getElementById('fEingang').value || null,
+      datumUrteil:  document.getElementById('fUrteil').value  || null,
+      notizen:      document.getElementById('fNotizen').value,
+    };
+    const r = await fetch(API, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    if (!r.ok) { toast('Fehler beim Anlegen.'); return; }
+    toast('Verfahren angelegt.');
+  }
+  closeModal();
+  loadRandom();
+}
+
+async function editVerfahren(id) {
+  const r = await fetch(`${API}/${id}`);
+  const v = await r.json();
+  openUploadModal(v);
+}
+
+async function deleteVerfahren(id) {
+  if (!confirm('Verfahren wirklich löschen? Die PDF-Datei bleibt auf der Festplatte erhalten.')) return;
+  await fetch(`${API}/${id}`, { method: 'DELETE' });
+  toast('Verfahren gelöscht.');
+  loadRandom();
+}
+
+function toast(msg) {
+  const el = document.getElementById('toast');
+  el.textContent = msg; el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2800);
+}
+
+loadRandom();
+</script>
+</body>
+</html>
