@@ -94,13 +94,9 @@ psql -U juraxuser -d juraxdb -f schema.sql
 
 ### 4. Wurzelverzeichnis konfigurieren
 
-Das Wurzelverzeichnis für die PDF-Ablage wird in der Datei `root.txt` im Projektverzeichnis eingetragen. Die Datei muss **vor dem Serverstart** manuell angelegt werden:
+Das Wurzelverzeichnis wird **nicht manuell** konfiguriert — JuraX fragt beim ersten Start automatisch danach.
 
-```bash
-echo "/pfad/zu/jurax-docs" > root.txt
-```
-
-Die PDF-Dateien werden in folgender Struktur abgelegt:
+Beim ersten Aufruf der Webanwendung (`http://localhost:8080/jurax/`) erscheint ein **Setup-Dialog**, der die gesamte Oberfläche blockiert, bis ein Wurzelverzeichnis angegeben wurde. Der Benutzer trägt dort den absoluten Pfad ein; JuraX legt das Verzeichnis automatisch an, falls es noch nicht existiert, und speichert den Pfad in `root.txt`.
 
 ```
 /pfad/zu/jurax-docs/
@@ -110,7 +106,9 @@ Die PDF-Dateien werden in folgender Struktur abgelegt:
             └── 14-C-123-24.pdf
 ```
 
-> `root.txt` enthält einen maschinenspezifischen absoluten Pfad und wird nicht eingecheckt (`.gitignore`).
+Ab dem zweiten Start erscheint der Dialog nicht mehr — das Wurzelverzeichnis ist bereits in `root.txt` hinterlegt.
+
+> `root.txt` enthält einen maschinenspezifischen absoluten Pfad und wird nicht eingecheckt (`.gitignore`). Das Wurzelverzeichnis kann jederzeit geändert werden, indem `root.txt` manuell bearbeitet oder der Server mit einer leeren `root.txt` neu gestartet wird — dann erscheint der Setup-Dialog erneut.
 
 ---
 
@@ -178,9 +176,10 @@ echo "sk-ant-..." > claude_api_key.txt
 ## Anwendung starten
 
 ```bash
-# 1. root.txt und claude_api_key.txt anlegen (siehe oben)
+# 1. Claude API-Key ablegen (nur für automatische Migration beim Erststart nötig)
+echo "sk-ant-..." > claude_api_key.txt
 
-# 2. WildFly starten — Migration läuft automatisch beim Hochfahren
+# 2. WildFly starten
 $WILDFLY_HOME/bin/standalone.sh
 
 # 3. Projekt bauen
@@ -189,7 +188,7 @@ mvn clean package -DskipTests
 # 4. WAR deployen
 cp target/jurax.war $WILDFLY_HOME/standalone/deployments/
 
-# 5. Aufrufen
+# 5. Aufrufen — beim ersten Start erscheint der Setup-Dialog zur Auswahl des Wurzelverzeichnisses
 open http://localhost:8080/jurax/
 ```
 
