@@ -10,6 +10,7 @@ import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.lang.reflect.Field;
+import java.nio.file.*;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -23,6 +24,30 @@ class VerfahrenResourceMockTest {
     @Mock EntityManager em;
     @Mock Query         query;
     @InjectMocks VerfahrenResource resource;
+
+    /** Temporäres Verzeichnis als Wurzelverzeichnis für PDF-Tests */
+    private static Path tempRoot;
+
+    @BeforeAll
+    static void createRootTxt() throws Exception {
+        tempRoot = Files.createTempDirectory("jurax-test-root");
+        // root.txt im working directory ablegen, damit getRootDir() sie findet
+        Path rootTxt = Paths.get(System.getProperty("user.dir"), "root.txt");
+        Files.writeString(rootTxt, tempRoot.toAbsolutePath().toString());
+        // rootDir-Cache zurücksetzen, damit der neue Wert gelesen wird
+        Field f = VerfahrenResource.class.getDeclaredField("rootDir");
+        f.setAccessible(true);
+        f.set(null, null);
+    }
+
+    @AfterAll
+    static void cleanupRootTxt() throws Exception {
+        Files.deleteIfExists(Paths.get(System.getProperty("user.dir"), "root.txt"));
+        // Cache zurücksetzen
+        Field f = VerfahrenResource.class.getDeclaredField("rootDir");
+        f.setAccessible(true);
+        f.set(null, null);
+    }
 
     @BeforeEach
     void inject() throws Exception {
@@ -251,7 +276,7 @@ class VerfahrenResourceMockTest {
         assertEquals(400, r.getStatus());
     }
 
-    @Test void upload_validAz_noFile_persistsMetadata() {
+    @Test void upload_validAz_noFile_persistsMetadata() throws Exception {
         doNothing().when(em).persist(any(Verfahren.class));
         doNothing().when(em).flush();
         // Kein InputStream → Datei wird nicht geschrieben, aber Eintrag angelegt

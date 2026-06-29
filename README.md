@@ -1,6 +1,6 @@
 # JuraX – Rechtliche Verfahrensverwaltung
 
-Vollständiges System zur Verwaltung rechtlicher Verfahren auf Basis von **Jakarta EE 10**, **PostgreSQL** und einer modernen Single-Page-Webanwendung — identische Architektur wie [hospital](https://github.com/hjstephan86/hospital).
+Vollständiges System zur Verwaltung rechtlicher Verfahren auf Basis von **Jakarta EE 10**, **PostgreSQL** und einer modernen Single-Page-Webanwendung.
 
 ---
 
@@ -93,13 +93,14 @@ psql -U juraxuser -d juraxdb -f schema.sql
 
 ### 4. Wurzelverzeichnis konfigurieren
 
-Das Wurzelverzeichnis für die PDF-Ablage wird als System-Property an WildFly übergeben. In `standalone.conf` (Linux) bzw. `standalone.conf.bat` (Windows):
+Das Wurzelverzeichnis für die PDF-Ablage wird in der Datei `root.txt` im Projektverzeichnis eingetragen. Die Datei muss **vor dem Serverstart** manuell angelegt werden:
 
 ```bash
-JAVA_OPTS="$JAVA_OPTS -Djurax.rootdir=/pfad/zu/jurax-docs"
+echo "/pfad/zu/jurax-docs" > root.txt
 ```
 
-Die PDF-Dateien werden dann automatisch abgelegt als:
+Beim ersten Zugriff auf die API liest die Anwendung diesen Pfad automatisch ein. Die PDF-Dateien werden dann abgelegt als:
+
 ```
 /pfad/zu/jurax-docs/
 └── 2024/
@@ -107,6 +108,8 @@ Die PDF-Dateien werden dann automatisch abgelegt als:
         └── 15/
             └── 14-C-123-24.pdf
 ```
+
+> **Hinweis:** `root.txt` enthält einen absoluten Pfad und sollte nicht in das Git-Repository eingecheckt werden. Trage sie daher in `.gitignore` ein.
 
 ---
 

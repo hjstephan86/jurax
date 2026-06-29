@@ -7,7 +7,10 @@ import jakarta.transaction.Transactional;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
 import java.io.*;
-import java.nio.file.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.util.List;
 
@@ -20,9 +23,26 @@ public class VerfahrenResource {
     @PersistenceContext(unitName = "juraxPU")
     private EntityManager em;
 
-    // Wurzelverzeichnis für PDF-Ablage (konfigurierbar per System-Property)
-    private static final String ROOT_DIR =
-        System.getProperty("jurax.rootdir", System.getProperty("user.home") + "/jurax-docs");
+    // Wurzelverzeichnis: wird beim ersten Zugriff aus root.txt im Projektverzeichnis gelesen
+    private static final java.nio.file.Path ROOT_TXT =
+        Paths.get(System.getProperty("user.dir"), "root.txt");
+
+    private static String rootDir;
+
+    private static synchronized String getRootDir() throws IOException {
+        if (rootDir == null) {
+            if (!Files.exists(ROOT_TXT)) {
+                throw new IOException(
+                    "root.txt nicht gefunden: " + ROOT_TXT.toAbsolutePath() +
+                    " — bitte absoluten Pfad zum Wurzelverzeichnis eintragen.");
+            }
+            rootDir = Files.readString(ROOT_TXT, StandardCharsets.UTF_8).strip();
+            if (rootDir.isEmpty()) {
+                throw new IOException("root.txt ist leer — bitte absoluten Pfad eintragen.");
+            }
+        }
+        return rootDir;
+    }
 
     // ----------------------------------------------------------
     // GET /verfahren/random?limit=30
@@ -96,12 +116,12 @@ public class VerfahrenResource {
         if (v == null || v.getDateiPfad() == null)
             return Response.status(Response.Status.NOT_FOUND).build();
 
-        Path pdfPath = Paths.get(ROOT_DIR, v.getDateiPfad());
-        if (!Files.exists(pdfPath))
-            return Response.status(Response.Status.NOT_FOUND)
-                .entity("Datei nicht gefunden: " + pdfPath).build();
-
         try {
+            java.nio.file.Path pdfPath = Paths.get(getRootDir(), v.getDateiPfad());
+            if (!Files.exists(pdfPath))
+                return Response.status(Response.Status.NOT_FOUND)
+                    .entity("Datei nicht gefunden: " + pdfPath).build();
+
             byte[] data = Files.readAllBytes(pdfPath);
             return Response.ok(data)
                 .header("Content-Disposition",
@@ -126,7 +146,7 @@ public class VerfahrenResource {
     // ----------------------------------------------------------
     // POST /verfahren/upload
     // Multipart: PDF hochladen + Metadaten als Form-Parameter
-    // Ablage: ROOT_DIR/{jahr}/{monat}/{tag}/{dateiname}
+    // Ablage: {root.txt}/{jahr}/{monat}/{tag}/{dateiname}
     // ----------------------------------------------------------
     @POST
     @Path("/upload")
@@ -163,11 +183,11 @@ public class VerfahrenResource {
             ? dateiName.replaceAll("[^a-zA-Z0-9._\\-]", "_")
             : aktenzeichen.replaceAll("[^a-zA-Z0-9]", "-") + ".pdf";
 
-        // Pfad: ROOT_DIR/2024/03/15/dateiname.pdf
-        String relativPfad = String.format("%d/%02d/%02d/%s", jahr, monat, tag, sichereDateiName);
-        Path zielPfad = Paths.get(ROOT_DIR, relativPfad);
-
         try {
+            String root = getRootDir();
+            // Pfad: {root}/2024/03/15/dateiname.pdf
+            String relativPfad = String.format("%d/%02d/%02d/%s", jahr, monat, tag, sichereDateiName);
+            java.nio.file.Path zielPfad = Paths.get(root, relativPfad);
             Files.createDirectories(zielPfad.getParent());
             long geschrieben = 0;
             if (dateiDaten != null) {
