@@ -26,7 +26,7 @@ import java.util.stream.Collectors;
  *      um Jahr, Monat und Tag aus Dateiname und Metadaten zu ermitteln.
  *   3. Die Dokumente werden in {root}/{jahr}/{monat}/{tag}/ verschoben.
  *
- * Der Claude-API-Key wird aus der Datei claude_api_key.txt im Projektverzeichnis gelesen.
+ * Der KI API-Key wird aus der Datei ai_api_key.txt im Projektverzeichnis gelesen.
  */
 @Singleton
 @Startup
@@ -38,9 +38,9 @@ public class StartupMigration {
     private static final java.nio.file.Path ROOT_TXT =
         Paths.get(System.getProperty("user.dir"), "root.txt");
 
-    // Pfad zur claude_api_key.txt im Projektverzeichnis
+    // Pfad zur ai_api_key.txt im Projektverzeichnis
     private static final java.nio.file.Path API_KEY_TXT =
-        Paths.get(System.getProperty("user.dir"), "claude_api_key.txt");
+        Paths.get(System.getProperty("user.dir"), "ai_api_key.txt");
 
     @PostConstruct
     public void init() {
@@ -193,15 +193,15 @@ public class StartupMigration {
     }
 
     /**
-     * Liest den Claude-API-Key aus claude_api_key.txt.
+     * Liest den KI API-Key aus ai_api_key.txt.
      * Falls die Datei fehlt, wird eine leere Zeichenkette zurückgegeben
      * (Migration schlägt dann pro Datei mit einer Warnung fehl).
      */
     private String readApiKey() {
         try {
-            return readFile(API_KEY_TXT, "claude_api_key.txt");
+            return readFile(API_KEY_TXT, "ai_api_key.txt");
         } catch (IOException e) {
-            LOG.warning("[JuraX] claude_api_key.txt nicht gefunden — KI-Einsortierung nicht möglich.");
+            LOG.warning("[JuraX] ai_api_key.txt nicht gefunden — KI-Einsortierung nicht möglich.");
             return "";
         }
     }

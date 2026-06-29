@@ -149,25 +149,43 @@
   background:rgba(0,0,0,.55); align-items:center; justify-content:center;">
   <div style="
     background:#fff; border-radius:10px; padding:36px 40px;
-    max-width:480px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.25);">
+    max-width:500px; width:90%; box-shadow:0 8px 32px rgba(0,0,0,.25);">
     <h2 style="font-size:1.2rem;margin-bottom:8px;color:#1e2a35">
       ⚖ JuraX – Ersteinrichtung
     </h2>
     <p style="font-size:.88rem;color:#607080;margin-bottom:20px;line-height:1.5">
-      Bitte gib das <strong>Wurzelverzeichnis</strong> an, in dem JuraX
-      die PDF-Dokumente ablegen soll. Das Verzeichnis wird automatisch
-      angelegt, falls es noch nicht existiert.
+      Bitte konfiguriere JuraX vor dem ersten Start. Diese Einstellungen
+      werden einmalig gespeichert und beim nächsten Start nicht mehr abgefragt.
     </p>
+
     <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:6px">
-      Wurzelverzeichnis (absoluter Pfad)
+      Wurzelverzeichnis (absoluter Pfad) *
     </label>
     <input id="setupRootInput" type="text"
       placeholder="z.B. /home/benutzer/jurax-docs oder C:\jurax-docs"
       style="width:100%;padding:9px 12px;border:1.5px solid #dde2e8;
-             border-radius:7px;font-size:.9rem;outline:none;margin-bottom:8px"/>
+             border-radius:7px;font-size:.9rem;outline:none;margin-bottom:4px"/>
+    <p style="font-size:.78rem;color:#607080;margin-bottom:16px">
+      Hier legt JuraX alle PDF-Dokumente ab. Das Verzeichnis wird automatisch angelegt.
+    </p>
+
+    <label style="font-size:.85rem;font-weight:600;display:block;margin-bottom:6px">
+      KI API-Key
+      <span style="font-weight:400;color:#607080">(optional)</span>
+    </label>
+    <input id="setupApiKeyInput" type="password"
+      placeholder="API-Key des KI-Dienstes"
+      style="width:100%;padding:9px 12px;border:1.5px solid #dde2e8;
+             border-radius:7px;font-size:.9rem;outline:none;margin-bottom:4px"/>
+    <p style="font-size:.78rem;color:#607080;margin-bottom:20px">
+      Wird nur für die automatische Dokumentenmigration beim Systemstart benötigt,
+      wenn bereits Dokumente in einer unbekannten Ordnerstruktur vorhanden sind.
+      Beim manuellen Hochladen ist kein API-Key erforderlich.
+    </p>
+
     <div id="setupError"
       style="font-size:.82rem;color:#c0392b;min-height:18px;margin-bottom:14px"></div>
-    <button id="setupSaveBtn" onclick="saveRootDir()" style="
+    <button id="setupSaveBtn" onclick="saveSetup()" style="
       width:100%;padding:10px;border:none;border-radius:7px;
       background:#3b5b6e;color:#fff;font-size:.92rem;font-weight:600;
       cursor:pointer">
@@ -338,7 +356,7 @@ const CONFIG = '/api/config';
 
 async function checkSetup() {
   try {
-    const r = await fetch(`${CONFIG}/rootdir`);
+    const r = await fetch(`${CONFIG}/setup`);
     const d = await r.json();
     if (!d.configured) {
       showSetupOverlay();
@@ -346,7 +364,6 @@ async function checkSetup() {
       loadRandom();
     }
   } catch (e) {
-    // Verbindungsfehler — trotzdem laden
     loadRandom();
   }
 }
@@ -359,13 +376,14 @@ function hideSetupOverlay() {
   document.getElementById('setupOverlay').style.display = 'none';
 }
 
-async function saveRootDir() {
-  const input = document.getElementById('setupRootInput').value.trim();
-  const errEl = document.getElementById('setupError');
+async function saveSetup() {
+  const rootdir  = document.getElementById('setupRootInput').value.trim();
+  const aiApiKey = document.getElementById('setupApiKeyInput').value.trim();
+  const errEl    = document.getElementById('setupError');
   errEl.textContent = '';
 
-  if (!input) {
-    errEl.textContent = 'Bitte einen Pfad eingeben.';
+  if (!rootdir) {
+    errEl.textContent = 'Bitte ein Wurzelverzeichnis eingeben.';
     return;
   }
 
@@ -374,10 +392,10 @@ async function saveRootDir() {
   btn.textContent = 'Wird gespeichert …';
 
   try {
-    const r = await fetch(`${CONFIG}/rootdir`, {
+    const r = await fetch(`${CONFIG}/setup`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rootdir: input })
+      body: JSON.stringify({ rootdir, aiApiKey })
     });
     const d = await r.json();
     if (!r.ok || !d.configured) {
@@ -396,7 +414,9 @@ async function saveRootDir() {
 }
 
 document.getElementById('setupRootInput')
-  .addEventListener('keydown', e => { if (e.key === 'Enter') saveRootDir(); });
+  .addEventListener('keydown', e => { if (e.key === 'Enter') saveSetup(); });
+document.getElementById('setupApiKeyInput')
+  .addEventListener('keydown', e => { if (e.key === 'Enter') saveSetup(); });
 const ROW_H  = 44;
 const BUFFER = 5;
 let allData  = [];

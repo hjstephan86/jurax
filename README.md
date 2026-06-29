@@ -9,10 +9,11 @@ Vollständiges System zur Verwaltung rechtlicher Verfahren auf Basis von **Jakar
 1. [Architektur](#architektur)
 2. [Voraussetzungen](#voraussetzungen)
 3. [Installation](#installation)
-4. [Anwendung starten](#anwendung-starten)
-5. [Testausführung](#testausführung)
-6. [API-Referenz](#api-referenz)
-7. [Projektstruktur](#projektstruktur)
+4. [Ersteinrichtung beim ersten Start](#4-ersteinrichtung-beim-ersten-start)
+5. [Automatische Dokumentenmigration beim Systemstart](#automatische-dokumentenmigration-beim-systemstart)
+6. [Dokumente manuell hochladen](#dokumente-manuell-hochladen)
+7. [Anwendung starten](#anwendung-starten)
+8. [Testausführung](#testausführung)
 
 ---
 
@@ -92,29 +93,47 @@ psql -U juraxuser -d juraxdb -f schema.sql
 </datasource>
 ```
 
-### 4. Wurzelverzeichnis konfigurieren
+### 4. Ersteinrichtung beim ersten Start
 
-Das Wurzelverzeichnis wird **nicht manuell** konfiguriert — JuraX fragt beim ersten Start automatisch danach.
+Weder `root.txt` noch `ai_api_key.txt` müssen manuell angelegt werden. JuraX erledigt die Konfiguration beim ersten Start vollautomatisch über einen **Setup-Dialog**.
 
-Beim ersten Aufruf der Webanwendung (`http://localhost:8080/jurax/`) erscheint ein **Setup-Dialog**, der die gesamte Oberfläche blockiert, bis ein Wurzelverzeichnis angegeben wurde. Der Benutzer trägt dort den absoluten Pfad ein; JuraX legt das Verzeichnis automatisch an, falls es noch nicht existiert, und speichert den Pfad in `root.txt`.
+#### Ablauf
+
+Beim ersten Aufruf der Webanwendung (`http://localhost:8080/jurax/`) erkennt JuraX, dass noch keine Konfiguration vorhanden ist, und blendet einen **vollflächigen Setup-Dialog** ein, der die gesamte Oberfläche blockiert, bis alle Pflichtfelder ausgefüllt sind. Erst nach dem Speichern startet die Anwendung normal.
+
+Der Dialog enthält zwei Felder:
+
+**1. Wurzelverzeichnis (Pflichtfeld)**
+
+Der absolute Pfad zu dem Verzeichnis, in dem JuraX alle PDF-Dokumente nach folgendem Schema ablegt:
 
 ```
-/pfad/zu/jurax-docs/
+{Wurzelverzeichnis}/
 └── 2024/
     └── 03/
         └── 15/
             └── 14-C-123-24.pdf
 ```
 
-Ab dem zweiten Start erscheint der Dialog nicht mehr — das Wurzelverzeichnis ist bereits in `root.txt` hinterlegt.
+JuraX legt das Verzeichnis automatisch an, falls es noch nicht existiert. Der Pfad wird in `root.txt` im Projektverzeichnis gespeichert.
 
-> `root.txt` enthält einen maschinenspezifischen absoluten Pfad und wird nicht eingecheckt (`.gitignore`). Das Wurzelverzeichnis kann jederzeit geändert werden, indem `root.txt` manuell bearbeitet oder der Server mit einer leeren `root.txt` neu gestartet wird — dann erscheint der Setup-Dialog erneut.
+**2. KI API-Key (optional)**
+
+Der API-Key eines KI-Dienstes, der für die **automatische Dokumentenmigration beim Systemstart** benötigt wird (siehe nächster Abschnitt). Das Feld ist bewusst nicht auf einen bestimmten Anbieter festgelegt — es kann jeder kompatible KI-Dienst verwendet werden. Der Key wird in `ai_api_key.txt` im Projektverzeichnis gespeichert und als Passwort maskiert eingegeben.
+
+Beim manuellen Hochladen von Dokumenten wird kein API-Key benötigt — der Benutzer legt das Ablage-Datum dort selbst fest.
+
+#### Verhalten nach der Ersteinrichtung
+
+Ab dem zweiten Start erscheint der Setup-Dialog nicht mehr. JuraX liest `root.txt` und `ai_api_key.txt` automatisch ein.
+
+Die Konfiguration kann jederzeit zurückgesetzt werden, indem `root.txt` geleert oder gelöscht wird — beim nächsten Start erscheint der Setup-Dialog erneut.
+
+> `root.txt` und `ai_api_key.txt` enthalten maschinenspezifische und sicherheitsrelevante Daten und werden nicht in das Git-Repository eingecheckt (`.gitignore`).
 
 ---
 
 ## Automatische Dokumentenmigration beim Systemstart
-
-> **Dies ist ein zentrales Feature von JuraX und muss vor dem ersten Start verstanden werden.**
 
 ### Hintergrund
 
@@ -144,7 +163,7 @@ Beim Serverstart führt `StartupMigration` (`@Singleton @Startup`) folgende Schr
                 ├── Schritt 1: Alle PDFs werden atomar nach {root}/bak/ gesichert.
                 │             Namenskollisionen werden automatisch aufgelöst.
                 │
-                ├── Schritt 2: Für jede Datei in bak/ wird die Claude-API befragt.
+                ├── Schritt 2: Für jede Datei in bak/ wird die KI-API befragt.
                 │             Der Dateiname wird analysiert und Jahr/Monat/Tag ermittelt.
                 │             Beispiele:
                 │               "14-C-123-24.pdf"          → 2024/03/15
@@ -157,38 +176,49 @@ Beim Serverstart führt `StartupMigration` (`@Singleton @Startup`) folgende Schr
                               mit Warnung im Serverlog.
 ```
 
-### Claude API-Key konfigurieren
+### KI API-Key
 
-Lege den API-Key **vor dem Serverstart** in einer Datei `claude_api_key.txt` im Projektverzeichnis ab:
+Der KI API-Key wird beim ersten Start über den Setup-Dialog abgefragt und automatisch in `ai_api_key.txt` gespeichert. Eine manuelle Anlage ist nicht notwendig.
 
-```bash
-echo "sk-ant-..." > claude_api_key.txt
-```
+Der Key ist bewusst anbieterunabhängig gehalten — es kann jeder KI-Dienst verwendet werden, dessen API das Format der Anfragen unterstützt. Der Dienst muss in der Lage sein, aus einem Dateinamen ein Datum (Jahr, Monat, Tag) im JSON-Format zurückzugeben.
 
-> `claude_api_key.txt` wird nicht eingecheckt (`.gitignore`).
-
-**Fehlt der API-Key:** JuraX startet dennoch. Dokumente in `bak/` werden mit dem heutigen Datum als Fallback eingeordnet und eine Warnung erscheint im Serverlog. Die Ablage muss dann manuell korrigiert werden.
+**Fehlt der API-Key:** JuraX startet dennoch. Dokumente in `bak/` werden mit dem heutigen Datum als Fallback eingeordnet, und eine Warnung erscheint im Serverlog. Die Ablage kann dann manuell korrigiert werden.
 
 **Die `bak/`-Kopien bleiben immer erhalten** — kein Dokument wird gelöscht. Die Migration ist jederzeit rückgängig zu machen, indem der Inhalt von `bak/` wiederhergestellt wird.
+
+---
+
+## Dokumente manuell hochladen
+
+JuraX unterstützt zwei Upload-Wege — in beiden Fällen legt der Benutzer das Ablage-Datum selbst fest, ohne KI-Unterstützung:
+
+**Einzelner Upload** — Button „+ Verfahren / PDF hochladen":
+Öffnet ein Formular mit allen Metadaten (Aktenzeichen, Gericht, Status, Eingangsdatum, Notizen) sowie zwei Datumsfeldern:
+- **Eingangsdatum** — das juristische Eingangsdatum des Verfahrens
+- **Ablage-Datum** — bestimmt den Ordnerpfad `{Jahr}/{Monat}/{Tag}/`; bleibt das Feld leer, wird das Eingangsdatum verwendet
+
+**Mehrfach-Upload** — Button „📂 Mehrere PDFs hochladen":
+Ermöglicht die gleichzeitige Auswahl beliebig vieler PDF-Dateien. Für jede Datei erscheint eine eigene Zeile in einer Tabelle, in der Aktenzeichen, Gericht, Eingangsdatum, Ablage-Datum und Status individuell eingetragen werden können. Zusätzlich gibt es ein globales „Ablage-Datum für alle setzen"-Feld, das alle Zeilen auf einmal befüllt und anschließend pro Datei noch überschrieben werden kann. Ein Fortschrittsbalken zeigt den Upload-Fortschritt an.
 
 ---
 
 ## Anwendung starten
 
 ```bash
-# 1. Claude API-Key ablegen (nur für automatische Migration beim Erststart nötig)
-echo "sk-ant-..." > claude_api_key.txt
-
-# 2. WildFly starten
+# 1. WildFly starten
 $WILDFLY_HOME/bin/standalone.sh
 
-# 3. Projekt bauen
+# 2. Projekt bauen
 mvn clean package -DskipTests
 
-# 4. WAR deployen
+# 3. WAR deployen
 cp target/jurax.war $WILDFLY_HOME/standalone/deployments/
 
-# 5. Aufrufen — beim ersten Start erscheint der Setup-Dialog zur Auswahl des Wurzelverzeichnisses
+# 4. Aufrufen
+#    Beim ersten Start erscheint der Setup-Dialog:
+#    → Wurzelverzeichnis eingeben (wird automatisch angelegt)
+#    → KI API-Key eingeben (optional, nur für automatische Migration)
+#    Ab dem zweiten Start startet die Anwendung direkt.
 open http://localhost:8080/jurax/
 ```
 

@@ -1,4 +1,4 @@
 target/
 root.txt
-claude_api_key.txt
+ai_api_key.txt
 *.class
