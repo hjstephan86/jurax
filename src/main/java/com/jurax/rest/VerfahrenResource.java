@@ -146,7 +146,8 @@ public class VerfahrenResource {
     // ----------------------------------------------------------
     // POST /verfahren/upload
     // Multipart: PDF hochladen + Metadaten als Form-Parameter
-    // Ablage: {root.txt}/{jahr}/{monat}/{tag}/{dateiname}
+    // Ablage: {root.txt}/{ablageDatum oder datumEingang}/{dateiname}
+    // ablageDatum (optional): überschreibt das Eingangsdatum als Ordner-Datum
     // ----------------------------------------------------------
     @POST
     @Path("/upload")
@@ -158,6 +159,7 @@ public class VerfahrenResource {
             @FormParam("gericht")      String gericht,
             @FormParam("status")       @DefaultValue("offen") String status,
             @FormParam("datumEingang") String datumEingangStr,
+            @FormParam("ablageDatum")  String ablageDatumStr,
             @FormParam("notizen")      String notizen,
             @FormParam("dateiName")    String dateiName,
             @FormParam("dateiDaten")   InputStream dateiDaten) {
@@ -173,7 +175,15 @@ public class VerfahrenResource {
                 eingang = LocalDate.parse(datumEingangStr);
         } catch (Exception ignored) {}
 
-        LocalDate ablage = eingang != null ? eingang : heute;
+        // ablageDatum bestimmt den Ordnerpfad; fällt zurück auf datumEingang, dann auf heute
+        LocalDate ablage = heute;
+        try {
+            if (ablageDatumStr != null && !ablageDatumStr.isBlank())
+                ablage = LocalDate.parse(ablageDatumStr);
+            else if (eingang != null)
+                ablage = eingang;
+        } catch (Exception ignored) {}
+
         short jahr  = (short) ablage.getYear();
         short monat = (short) ablage.getMonthValue();
         short tag   = (short) ablage.getDayOfMonth();

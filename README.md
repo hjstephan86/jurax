@@ -114,7 +114,7 @@ Die PDF-Dateien werden in folgender Struktur abgelegt:
 
 ---
 
-## ⚠️ Automatische Dokumentenmigration beim Systemstart
+## Automatische Dokumentenmigration beim Systemstart
 
 > **Dies ist ein zentrales Feature von JuraX und muss vor dem ersten Start verstanden werden.**
 
@@ -128,7 +128,9 @@ JuraX erwartet, dass alle PDF-Dokumente im Wurzelverzeichnis nach dem Schema
 
 abgelegt sind. Wenn das Wurzelverzeichnis beim Start **nicht** dieser Struktur entspricht — etwa weil Dokumente bisher in einer anderen, benutzerdefinierten Ordnerstruktur gespeichert wurden — führt JuraX automatisch eine **KI-gestützte Migration** durch.
 
-Ein einfaches Skript reicht hierfür nicht aus: Jeder Benutzer kann eine völlig andere Ausgangsstruktur haben. Dateinamen wie `Urteil_OLG_Hamm.pdf`, `scan_2023-11_Bielefeld.pdf` oder `brief_an_jobcenter.pdf` erfordern individuelle Analyse — kein regelbasierter Ansatz kann das zuverlässig leisten.
+> **Beim manuellen Hochladen von Dokumenten ist keine KI erforderlich** — der Benutzer legt das Ablage-Datum selbst fest (siehe Abschnitt [Anwendung starten](#anwendung-starten)). Die KI kommt ausschließlich beim Systemstart zum Einsatz, wenn vorhandene Dokumente in unbekannter Struktur automatisch einsortiert werden müssen.
+
+Ein einfaches Skript reicht für die automatische Migration nicht aus: Jeder Benutzer kann eine völlig andere Ausgangsstruktur haben. Dateinamen wie `Urteil_OLG_Hamm.pdf`, `scan_2023-11_Bielefeld.pdf` oder `brief_an_jobcenter.pdf` erfordern individuelle Analyse — kein regelbasierter Ansatz kann das zuverlässig leisten.
 
 ### Ablauf der Migration
 

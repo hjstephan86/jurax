@@ -146,6 +146,7 @@
 <header>
   <h1>⚖ JuraX – Verfahrensverwaltung</h1>
   <button class="btn" onclick="openUploadModal()">+ Verfahren / PDF hochladen</button>
+  <button class="btn-outline" onclick="openBatchModal()" style="margin-left:8px">📂 Mehrere PDFs hochladen</button>
 </header>
 
 <!-- Wurzelverzeichnis-Anzeige -->
@@ -213,8 +214,12 @@
         </select>
       </div>
       <div>
-        <label>Eingangsdatum (= Ablage-Datum im Ordner)</label>
+        <label>Eingangsdatum</label>
         <input id="fEingang" type="date"/>
+      </div>
+      <div>
+        <label>Ablage-Datum im Ordner</label>
+        <input id="fAblage" type="date" title="Bestimmt den Ordner: {Jahr}/{Monat}/{Tag}/. Leer = Eingangsdatum."/>
       </div>
       <div>
         <label>Urteilsdatum</label>
@@ -232,6 +237,54 @@
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeModal()">Abbrechen</button>
       <button class="btn" onclick="saveVerfahren()">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<!-- Batch-Upload-Dialog -->
+<div class="modal-overlay" id="batchOverlay" onclick="closeBatchOutside(event)">
+  <div class="modal" style="max-width:720px;width:95%">
+    <h2>📂 Mehrere PDFs hochladen</h2>
+    <p style="font-size:.85rem;color:#555;margin-bottom:12px">
+      Wähle eine oder mehrere PDF-Dateien aus. Für jede Datei kannst du das
+      <strong>Ablage-Datum</strong> individuell festlegen — es bestimmt den Ordner
+      <code>{Jahr}/{Monat}/{Tag}/</code> im Wurzelverzeichnis.
+    </p>
+    <div style="margin-bottom:14px">
+      <input id="batchDateiInput" type="file" accept="application/pdf" multiple
+        onchange="onBatchFilesSelected(this.files)"
+        style="font-size:.85rem"/>
+    </div>
+    <div id="batchTable" style="display:none">
+      <table style="width:100%;border-collapse:collapse;font-size:.82rem">
+        <thead>
+          <tr style="background:#f0f4f8;text-align:left">
+            <th style="padding:6px 8px">Dateiname</th>
+            <th style="padding:6px 8px">Aktenzeichen *</th>
+            <th style="padding:6px 8px">Gericht</th>
+            <th style="padding:6px 8px">Eingangsdatum</th>
+            <th style="padding:6px 8px;white-space:nowrap">Ablage-Datum ℹ</th>
+            <th style="padding:6px 8px">Status</th>
+          </tr>
+        </thead>
+        <tbody id="batchRows"></tbody>
+      </table>
+      <div style="margin-top:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <label style="font-size:.82rem;font-weight:600">Ablage-Datum für alle setzen:</label>
+        <input type="date" id="batchGlobalDatum" style="font-size:.82rem;padding:4px 6px"/>
+        <button class="btn-outline" style="padding:4px 12px;font-size:.82rem"
+          onclick="applyGlobalDatum()">Übernehmen</button>
+      </div>
+    </div>
+    <div id="batchProgress" style="display:none;margin-top:12px">
+      <div style="background:#e2e8f0;border-radius:4px;height:8px;overflow:hidden">
+        <div id="batchProgressBar" style="height:100%;background:var(--accent);width:0%;transition:width .3s"></div>
+      </div>
+      <div id="batchProgressText" style="font-size:.8rem;margin-top:4px;color:#555"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-outline" onclick="closeBatchModal()">Schließen</button>
+      <button class="btn" id="batchSaveBtn" onclick="saveBatch()" style="display:none">⬆ Alle hochladen</button>
     </div>
   </div>
 </div>
@@ -410,6 +463,7 @@ async function saveVerfahren() {
     fd.append('gericht',      document.getElementById('fGericht').value);
     fd.append('status',       document.getElementById('fStatus').value);
     fd.append('datumEingang', document.getElementById('fEingang').value);
+    fd.append('ablageDatum',  document.getElementById('fAblage').value);
     fd.append('notizen',      document.getElementById('fNotizen').value);
     fd.append('dateiName',    dateiInput.files[0].name);
     fd.append('dateiDaten',   dateiInput.files[0]);
@@ -458,6 +512,143 @@ function toast(msg) {
 }
 
 loadRandom();
+
+// ── Batch-Upload ───────────────────────────────────────────────────────────
+
+let batchFiles = [];
+
+function openBatchModal() {
+  document.getElementById('batchOverlay').classList.add('open');
+  document.getElementById('batchDateiInput').value = '';
+  document.getElementById('batchRows').innerHTML = '';
+  document.getElementById('batchTable').style.display = 'none';
+  document.getElementById('batchProgress').style.display = 'none';
+  document.getElementById('batchSaveBtn').style.display = 'none';
+  document.getElementById('batchGlobalDatum').value = '';
+  batchFiles = [];
+}
+
+function closeBatchModal() {
+  document.getElementById('batchOverlay').classList.remove('open');
+}
+
+function closeBatchOutside(e) {
+  if (e.target.id === 'batchOverlay') closeBatchModal();
+}
+
+function onBatchFilesSelected(files) {
+  batchFiles = Array.from(files);
+  if (!batchFiles.length) return;
+
+  const today = new Date().toISOString().split('T')[0];
+  const tbody = document.getElementById('batchRows');
+  tbody.innerHTML = '';
+
+  batchFiles.forEach((file, i) => {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid #e2e8f0';
+    tr.innerHTML = `
+      <td style="padding:5px 8px;font-size:.78rem;max-width:160px;word-break:break-all"
+          title="${file.name}">${file.name}</td>
+      <td style="padding:4px 6px">
+        <input type="text" data-i="${i}" data-field="az"
+          placeholder="14 C 123/24"
+          style="width:100%;font-size:.8rem;padding:3px 5px;border:1px solid #cbd5e0;border-radius:3px"/>
+      </td>
+      <td style="padding:4px 6px">
+        <input type="text" data-i="${i}" data-field="gericht"
+          placeholder="z.B. AG Bielefeld"
+          style="width:100%;font-size:.8rem;padding:3px 5px;border:1px solid #cbd5e0;border-radius:3px"/>
+      </td>
+      <td style="padding:4px 6px">
+        <input type="date" data-i="${i}" data-field="eingang"
+          style="font-size:.8rem;padding:3px 5px;border:1px solid #cbd5e0;border-radius:3px"/>
+      </td>
+      <td style="padding:4px 6px">
+        <input type="date" data-i="${i}" data-field="ablage"
+          title="Leer = Eingangsdatum"
+          style="font-size:.8rem;padding:3px 5px;border:1px solid #cbd5e0;border-radius:3px;background:#fffbeb"/>
+      </td>
+      <td style="padding:4px 6px">
+        <select data-i="${i}" data-field="status"
+          style="font-size:.8rem;padding:3px 5px;border:1px solid #cbd5e0;border-radius:3px">
+          <option value="offen">Offen</option>
+          <option value="geschlossen">Geschlossen</option>
+          <option value="ruhend">Ruhend</option>
+          <option value="erledigt">Erledigt</option>
+        </select>
+      </td>`;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('batchTable').style.display = 'block';
+  document.getElementById('batchSaveBtn').style.display = 'inline-block';
+}
+
+function applyGlobalDatum() {
+  const val = document.getElementById('batchGlobalDatum').value;
+  if (!val) return;
+  document.querySelectorAll('[data-field="ablage"]').forEach(el => el.value = val);
+}
+
+/** Liest den Wert eines Batch-Felds für Datei i */
+function batchVal(i, field) {
+  const el = document.querySelector(`[data-i="${i}"][data-field="${field}"]`);
+  return el ? el.value.trim() : '';
+}
+
+async function saveBatch() {
+  const saveBtn = document.getElementById('batchSaveBtn');
+  saveBtn.disabled = true;
+
+  const prog    = document.getElementById('batchProgress');
+  const bar     = document.getElementById('batchProgressBar');
+  const progTxt = document.getElementById('batchProgressText');
+  prog.style.display = 'block';
+
+  let ok = 0, fail = 0;
+
+  for (let i = 0; i < batchFiles.length; i++) {
+    const file   = batchFiles[i];
+    const az     = batchVal(i, 'az');
+    const ablage = batchVal(i, 'ablage');
+    const eingang= batchVal(i, 'eingang');
+
+    if (!az) {
+      progTxt.textContent = `Datei ${i+1}/${batchFiles.length}: Aktenzeichen fehlt — übersprungen.`;
+      fail++;
+      continue;
+    }
+
+    const fd = new FormData();
+    fd.append('aktenzeichen', az);
+    fd.append('gericht',      batchVal(i, 'gericht'));
+    fd.append('status',       batchVal(i, 'status') || 'offen');
+    fd.append('datumEingang', eingang);
+    fd.append('ablageDatum',  ablage);   // leer = Fallback auf Eingangsdatum serverseitig
+    fd.append('dateiName',    file.name);
+    fd.append('dateiDaten',   file);
+
+    progTxt.textContent = `Lade hoch ${i+1}/${batchFiles.length}: ${file.name} …`;
+
+    try {
+      const r = await fetch(`${API}/upload`, { method: 'POST', body: fd });
+      if (r.ok) ok++;
+      else { fail++; console.warn('Fehler:', file.name, await r.text()); }
+    } catch (e) {
+      fail++;
+      console.error('Netzwerkfehler:', file.name, e);
+    }
+
+    bar.style.width = `${Math.round((i + 1) / batchFiles.length * 100)}%`;
+  }
+
+  progTxt.textContent =
+    `Fertig: ${ok} erfolgreich${fail ? ', ' + fail + ' fehlgeschlagen' : ''}.`;
+  saveBtn.disabled = false;
+
+  if (ok > 0) { loadRandom(); toast(`${ok} Dokument(e) hochgeladen.`); }
+}
 </script>
 </body>
 </html>
