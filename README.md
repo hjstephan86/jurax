@@ -26,6 +26,7 @@ Browser (index.html)
     ▼
 Jakarta EE 10 REST API  (WildFly 40.0.1.Final)
     │  JPA / Hibernate 7.3.2
+    │  StartupMigration (@Singleton @Startup)
     ▼
 PostgreSQL 18.4
     │  Trigram-GIN-Index (pg_trgm) für AZ-Suche
@@ -33,7 +34,7 @@ PostgreSQL 18.4
     │  TABLESAMPLE BERNOULLI (Zufallsanzeige)
     ▼
 Dateisystem
-    │  ROOT_DIR/{jahr}/{monat}/{tag}/{dateiname}.pdf
+    │  {root}/{jahr}/{monat}/{tag}/{dateiname}.pdf
     ▼
 PDF-Ablage nach Datum
 ```
@@ -48,7 +49,7 @@ PDF-Ablage nach Datum
 
 | Komponente | Version |
 |---|---|
-| Java JDK | 26 |
+| Java JDK | 21 |
 | Apache Maven | 3.9+ |
 | PostgreSQL | 18.4 |
 | WildFly | 40.0.1.Final |
@@ -99,7 +100,7 @@ Das Wurzelverzeichnis für die PDF-Ablage wird in der Datei `root.txt` im Projek
 echo "/pfad/zu/jurax-docs" > root.txt
 ```
 
-Beim ersten Zugriff auf die API liest die Anwendung diesen Pfad automatisch ein. Die PDF-Dateien werden dann abgelegt als:
+Die PDF-Dateien werden in folgender Struktur abgelegt:
 
 ```
 /pfad/zu/jurax-docs/
@@ -109,23 +110,84 @@ Beim ersten Zugriff auf die API liest die Anwendung diesen Pfad automatisch ein.
             └── 14-C-123-24.pdf
 ```
 
-> **Hinweis:** `root.txt` enthält einen absoluten Pfad und sollte nicht in das Git-Repository eingecheckt werden. Trage sie daher in `.gitignore` ein.
+> `root.txt` enthält einen maschinenspezifischen absoluten Pfad und wird nicht eingecheckt (`.gitignore`).
+
+---
+
+## ⚠️ Automatische Dokumentenmigration beim Systemstart
+
+> **Dies ist ein zentrales Feature von JuraX und muss vor dem ersten Start verstanden werden.**
+
+### Hintergrund
+
+JuraX erwartet, dass alle PDF-Dokumente im Wurzelverzeichnis nach dem Schema
+
+```
+{root}/{jahr}/{monat}/{tag}/dateiname.pdf
+```
+
+abgelegt sind. Wenn das Wurzelverzeichnis beim Start **nicht** dieser Struktur entspricht — etwa weil Dokumente bisher in einer anderen, benutzerdefinierten Ordnerstruktur gespeichert wurden — führt JuraX automatisch eine **KI-gestützte Migration** durch.
+
+Ein einfaches Skript reicht hierfür nicht aus: Jeder Benutzer kann eine völlig andere Ausgangsstruktur haben. Dateinamen wie `Urteil_OLG_Hamm.pdf`, `scan_2023-11_Bielefeld.pdf` oder `brief_an_jobcenter.pdf` erfordern individuelle Analyse — kein regelbasierter Ansatz kann das zuverlässig leisten.
+
+### Ablauf der Migration
+
+Beim Serverstart führt `StartupMigration` (`@Singleton @Startup`) folgende Schritte aus:
+
+```
+1. Prüfung: Enthält das Wurzelverzeichnis bereits {jahr}/{monat}/{tag}/?
+        │
+        ├── JA  → Keine Migration notwendig. Start normal.
+        │
+        └── NEIN → Migration starten:
+                │
+                ├── Schritt 1: Alle PDFs werden atomar nach {root}/bak/ gesichert.
+                │             Namenskollisionen werden automatisch aufgelöst.
+                │
+                ├── Schritt 2: Für jede Datei in bak/ wird die Claude-API befragt.
+                │             Der Dateiname wird analysiert und Jahr/Monat/Tag ermittelt.
+                │             Beispiele:
+                │               "14-C-123-24.pdf"          → 2024/03/15
+                │               "scan_2023-11_brief.pdf"   → 2023/11/01
+                │               "urteil_olg_hamm.pdf"      → Claude schätzt anhand
+                │                                             verfügbarer Hinweise
+                │
+                └── Schritt 3: Dokumente werden in {root}/{jahr}/{monat}/{tag}/ kopiert.
+                              Nicht klassifizierbare Dateien verbleiben in bak/
+                              mit Warnung im Serverlog.
+```
+
+### Claude API-Key konfigurieren
+
+Lege den API-Key **vor dem Serverstart** in einer Datei `claude_api_key.txt` im Projektverzeichnis ab:
+
+```bash
+echo "sk-ant-..." > claude_api_key.txt
+```
+
+> `claude_api_key.txt` wird nicht eingecheckt (`.gitignore`).
+
+**Fehlt der API-Key:** JuraX startet dennoch. Dokumente in `bak/` werden mit dem heutigen Datum als Fallback eingeordnet und eine Warnung erscheint im Serverlog. Die Ablage muss dann manuell korrigiert werden.
+
+**Die `bak/`-Kopien bleiben immer erhalten** — kein Dokument wird gelöscht. Die Migration ist jederzeit rückgängig zu machen, indem der Inhalt von `bak/` wiederhergestellt wird.
 
 ---
 
 ## Anwendung starten
 
 ```bash
-# 1. WildFly starten
+# 1. root.txt und claude_api_key.txt anlegen (siehe oben)
+
+# 2. WildFly starten — Migration läuft automatisch beim Hochfahren
 $WILDFLY_HOME/bin/standalone.sh
 
-# 2. Projekt bauen
+# 3. Projekt bauen
 mvn clean package -DskipTests
 
-# 3. WAR deployen
+# 4. WAR deployen
 cp target/jurax.war $WILDFLY_HOME/standalone/deployments/
 
-# 4. Aufrufen
+# 5. Aufrufen
 open http://localhost:8080/jurax/
 ```
 
@@ -141,7 +203,10 @@ $WILDFLY_HOME/bin/jboss-cli.sh --connect \
 ## Testausführung
 
 ```bash
-# Alle Tests + JaCoCo-Report
+# Unit- und Integrationstests
+mvn test -Dsurefire.excludes="**/ui/**" -Djacoco.skip=true
+
+# Alle Tests + JaCoCo-Report (WildFly muss laufen für UI-Tests)
 mvn clean verify
 
 # Playwright-Browser einmalig installieren
@@ -160,4 +225,4 @@ open doc/coverage/index.html
 | `VerfahrenUITest` | E2E (Playwright) | ~30 |
 | **Gesamt** | | **~65** |
 
-Konfiguriertes Minimum: **87 %
+Konfiguriertes Minimum: **87 %**
