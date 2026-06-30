@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="de"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>VerfahrenResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JuraX – Rechtliche Verfahrensverwaltung</a> &gt; <a href="index.source.html" class="el_package">com.jurax.rest</a> &gt; <span class="el_source">VerfahrenResource.java</span></div><h1>VerfahrenResource.java</h1><pre class="source lang-java linenums">package com.jurax.rest;
+
+import com.jurax.entity.Verfahren;
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.persistence.*;
+import jakarta.transaction.Transactional;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.*;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
+import java.util.List;
+
+@Path(&quot;/verfahren&quot;)
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+@RequestScoped
+<span class="fc" id="L21">public class VerfahrenResource {</span>
+
+    @PersistenceContext(unitName = &quot;juraxPU&quot;)
+    private EntityManager em;
+
+    // Wurzelverzeichnis: wird beim ersten Zugriff aus root.txt im Projektverzeichnis gelesen
+<span class="fc" id="L27">    private static final java.nio.file.Path ROOT_TXT =</span>
+<span class="fc" id="L28">        Paths.get(System.getProperty(&quot;user.dir&quot;), &quot;root.txt&quot;);</span>
+
+    private static String rootDir;
+
+    private static synchronized String getRootDir() throws IOException {
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (rootDir == null) {</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">            if (!Files.exists(ROOT_TXT)) {</span>
+<span class="nc" id="L35">                throw new IOException(</span>
+<span class="nc" id="L36">                    &quot;root.txt nicht gefunden: &quot; + ROOT_TXT.toAbsolutePath() +</span>
+                    &quot; — bitte absoluten Pfad zum Wurzelverzeichnis eintragen.&quot;);
+            }
+<span class="fc" id="L39">            rootDir = Files.readString(ROOT_TXT, StandardCharsets.UTF_8).strip();</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">            if (rootDir.isEmpty()) {</span>
+<span class="nc" id="L41">                throw new IOException(&quot;root.txt ist leer — bitte absoluten Pfad eintragen.&quot;);</span>
+            }
+        }
+<span class="fc" id="L44">        return rootDir;</span>
+    }
+
+    // ----------------------------------------------------------
+    // GET /verfahren/random?limit=30
+    // ----------------------------------------------------------
+    @GET
+    @Path(&quot;/random&quot;)
+    public Response getRandom(@QueryParam(&quot;limit&quot;) @DefaultValue(&quot;30&quot;) int limit) {
+<span class="fc" id="L53">        List&lt;Verfahren&gt; result = em</span>
+<span class="fc" id="L54">            .createNativeQuery(&quot;SELECT * FROM random_verfahren(:lim)&quot;, Verfahren.class)</span>
+<span class="fc" id="L55">            .setParameter(&quot;lim&quot;, limit)</span>
+<span class="fc" id="L56">            .getResultList();</span>
+<span class="fc" id="L57">        return Response.ok(result).build();</span>
+    }
+
+    // ----------------------------------------------------------
+    // GET /verfahren/search?az=14+C+123
+    // Aktenzeichen-Suche: fuzzy, bindestrich-/case-agnostisch
+    // ----------------------------------------------------------
+    @GET
+    @Path(&quot;/search&quot;)
+    public Response searchAz(@QueryParam(&quot;az&quot;) @DefaultValue(&quot;&quot;) String az) {
+<span class="fc bfc" id="L67" title="All 4 branches covered.">        if (az == null || az.isBlank()) return getRandom(30);</span>
+<span class="fc" id="L68">        List&lt;Verfahren&gt; result = em</span>
+<span class="fc" id="L69">            .createNativeQuery(&quot;SELECT * FROM search_verfahren_az(:az)&quot;, Verfahren.class)</span>
+<span class="fc" id="L70">            .setParameter(&quot;az&quot;, az.trim())</span>
+<span class="fc" id="L71">            .getResultList();</span>
+<span class="fc" id="L72">        return Response.ok(result).build();</span>
+    }
+
+    // ----------------------------------------------------------
+    // GET /verfahren/datum?jahr=2024&amp;monat=3&amp;tag=15
+    // Datumsfilter: alle Parameter optional
+    // ----------------------------------------------------------
+    @GET
+    @Path(&quot;/datum&quot;)
+    public Response searchDatum(
+            @QueryParam(&quot;jahr&quot;)  Short jahr,
+            @QueryParam(&quot;monat&quot;) Short monat,
+            @QueryParam(&quot;tag&quot;)   Short tag) {
+<span class="fc" id="L85">        List&lt;Verfahren&gt; result = em</span>
+<span class="fc" id="L86">            .createNativeQuery(</span>
+                &quot;SELECT * FROM search_verfahren_datum(:jahr, :monat, :tag)&quot;,
+                Verfahren.class)
+<span class="fc" id="L89">            .setParameter(&quot;jahr&quot;,  jahr)</span>
+<span class="fc" id="L90">            .setParameter(&quot;monat&quot;, monat)</span>
+<span class="fc" id="L91">            .setParameter(&quot;tag&quot;,   tag)</span>
+<span class="fc" id="L92">            .getResultList();</span>
+<span class="fc" id="L93">        return Response.ok(result).build();</span>
+    }
+
+    // ----------------------------------------------------------
+    // GET /verfahren/{id}
+    // ----------------------------------------------------------
+    @GET
+    @Path(&quot;/{id}&quot;)
+    public Response getById(@PathParam(&quot;id&quot;) Long id) {
+<span class="fc" id="L102">        Verfahren v = em.find(Verfahren.class, id);</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        if (v == null) return Response.status(Response.Status.NOT_FOUND).build();</span>
+<span class="fc" id="L104">        return Response.ok(v).build();</span>
+    }
+
+    // ----------------------------------------------------------
+    // GET /verfahren/{id}/pdf
+    // Liefert die PDF-Datei aus dem Dateisystem
+    // ----------------------------------------------------------
+    @GET
+    @Path(&quot;/{id}/pdf&quot;)
+    @Produces(&quot;application/pdf&quot;)
+    public Response getPdf(@PathParam(&quot;id&quot;) Long id) {
+<span class="fc" id="L115">        Verfahren v = em.find(Verfahren.class, id);</span>
+<span class="fc bfc" id="L116" title="All 4 branches covered.">        if (v == null || v.getDateiPfad() == null)</span>
+<span class="fc" id="L117">            return Response.status(Response.Status.NOT_FOUND).build();</span>
+
+        try {
+<span class="fc" id="L120">            java.nio.file.Path pdfPath = Paths.get(getRootDir(), v.getDateiPfad());</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">            if (!Files.exists(pdfPath))</span>
+<span class="fc" id="L122">                return Response.status(Response.Status.NOT_FOUND)</span>
+<span class="fc" id="L123">                    .entity(&quot;Datei nicht gefunden: &quot; + pdfPath).build();</span>
+
+<span class="nc" id="L125">            byte[] data = Files.readAllBytes(pdfPath);</span>
+<span class="nc" id="L126">            return Response.ok(data)</span>
+<span class="nc" id="L127">                .header(&quot;Content-Disposition&quot;,</span>
+<span class="nc" id="L128">                    &quot;inline; filename=\&quot;&quot; + v.getDateiName() + &quot;\&quot;&quot;)</span>
+<span class="nc" id="L129">                .build();</span>
+<span class="nc" id="L130">        } catch (IOException e) {</span>
+<span class="nc" id="L131">            return Response.serverError().entity(e.getMessage()).build();</span>
+        }
+    }
+
+    // ----------------------------------------------------------
+    // POST /verfahren  (JSON-Metadaten ohne Datei)
+    // ----------------------------------------------------------
+    @POST
+    @Transactional
+    public Response create(Verfahren v) {
+<span class="fc" id="L141">        em.persist(v);</span>
+<span class="fc" id="L142">        em.flush();</span>
+<span class="fc" id="L143">        return Response.status(Response.Status.CREATED).entity(v).build();</span>
+    }
+
+    // ----------------------------------------------------------
+    // POST /verfahren/upload
+    // Multipart: PDF hochladen + Metadaten als Form-Parameter
+    // Ablage: {root.txt}/{ablageDatum oder datumEingang}/{dateiname}
+    // ablageDatum (optional): überschreibt das Eingangsdatum als Ordner-Datum
+    // ----------------------------------------------------------
+    @POST
+    @Path(&quot;/upload&quot;)
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @Transactional
+    public Response upload(
+            @FormParam(&quot;aktenzeichen&quot;) String aktenzeichen,
+            @FormParam(&quot;bezeichnung&quot;)  String bezeichnung,
+            @FormParam(&quot;gericht&quot;)      String gericht,
+            @FormParam(&quot;status&quot;)       @DefaultValue(&quot;offen&quot;) String status,
+            @FormParam(&quot;datumEingang&quot;) String datumEingangStr,
+            @FormParam(&quot;ablageDatum&quot;)  String ablageDatumStr,
+            @FormParam(&quot;notizen&quot;)      String notizen,
+            @FormParam(&quot;dateiName&quot;)    String dateiName,
+            @FormParam(&quot;dateiDaten&quot;)   InputStream dateiDaten) {
+
+<span class="fc bfc" id="L167" title="All 4 branches covered.">        if (aktenzeichen == null || aktenzeichen.isBlank())</span>
+<span class="fc" id="L168">            return Response.status(Response.Status.BAD_REQUEST)</span>
+<span class="fc" id="L169">                .entity(&quot;Aktenzeichen fehlt&quot;).build();</span>
+
+<span class="fc" id="L171">        LocalDate heute = LocalDate.now();</span>
+<span class="fc" id="L172">        LocalDate eingang = null;</span>
+        try {
+<span class="pc bpc" id="L174" title="2 of 4 branches missed.">            if (datumEingangStr != null &amp;&amp; !datumEingangStr.isBlank())</span>
+<span class="fc" id="L175">                eingang = LocalDate.parse(datumEingangStr);</span>
+<span class="pc" id="L176">        } catch (Exception ignored) {}</span>
+
+        // ablageDatum bestimmt den Ordnerpfad; fällt zurück auf datumEingang, dann auf heute
+<span class="fc" id="L179">        LocalDate ablage = heute;</span>
+        try {
+<span class="pc bpc" id="L181" title="3 of 4 branches missed.">            if (ablageDatumStr != null &amp;&amp; !ablageDatumStr.isBlank())</span>
+<span class="nc" id="L182">                ablage = LocalDate.parse(ablageDatumStr);</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">            else if (eingang != null)</span>
+<span class="fc" id="L184">                ablage = eingang;</span>
+<span class="pc" id="L185">        } catch (Exception ignored) {}</span>
+
+<span class="fc" id="L187">        short jahr  = (short) ablage.getYear();</span>
+<span class="fc" id="L188">        short monat = (short) ablage.getMonthValue();</span>
+<span class="fc" id="L189">        short tag   = (short) ablage.getDayOfMonth();</span>
+
+        // Sanitize Dateiname
+<span class="pc bpc" id="L192" title="1 of 2 branches missed.">        String sichereDateiName = dateiName != null</span>
+<span class="fc" id="L193">            ? dateiName.replaceAll(&quot;[^a-zA-Z0-9._\\-]&quot;, &quot;_&quot;)</span>
+<span class="pc" id="L194">            : aktenzeichen.replaceAll(&quot;[^a-zA-Z0-9]&quot;, &quot;-&quot;) + &quot;.pdf&quot;;</span>
+
+        try {
+<span class="fc" id="L197">            String root = getRootDir();</span>
+            // Pfad: {root}/2024/03/15/dateiname.pdf
+<span class="fc" id="L199">            String relativPfad = String.format(&quot;%d/%02d/%02d/%s&quot;, jahr, monat, tag, sichereDateiName);</span>
+<span class="fc" id="L200">            java.nio.file.Path zielPfad = Paths.get(root, relativPfad);</span>
+<span class="fc" id="L201">            Files.createDirectories(zielPfad.getParent());</span>
+<span class="fc" id="L202">            long geschrieben = 0;</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">            if (dateiDaten != null) {</span>
+<span class="nc" id="L204">                geschrieben = Files.copy(dateiDaten, zielPfad,</span>
+                    StandardCopyOption.REPLACE_EXISTING);
+            }
+
+<span class="fc" id="L208">            Verfahren v = new Verfahren();</span>
+<span class="fc" id="L209">            v.setAktenzeichen(aktenzeichen);</span>
+<span class="fc" id="L210">            v.setBezeichnung(bezeichnung);</span>
+<span class="fc" id="L211">            v.setGericht(gericht);</span>
+<span class="fc" id="L212">            v.setStatus(status);</span>
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">            v.setDatumEingang(eingang != null ? eingang : heute);</span>
+<span class="fc" id="L214">            v.setNotizen(notizen);</span>
+<span class="fc" id="L215">            v.setDateiPfad(relativPfad);</span>
+<span class="fc" id="L216">            v.setDateiName(sichereDateiName);</span>
+<span class="fc" id="L217">            v.setDateiGroesse(geschrieben);</span>
+<span class="fc" id="L218">            v.setDateiJahr(jahr);</span>
+<span class="fc" id="L219">            v.setDateiMonat(monat);</span>
+<span class="fc" id="L220">            v.setDateiTag(tag);</span>
+
+<span class="fc" id="L222">            em.persist(v);</span>
+<span class="fc" id="L223">            em.flush();</span>
+<span class="fc" id="L224">            return Response.status(Response.Status.CREATED).entity(v).build();</span>
+
+<span class="nc" id="L226">        } catch (IOException e) {</span>
+<span class="nc" id="L227">            return Response.serverError().entity(&quot;Fehler beim Speichern: &quot; + e.getMessage()).build();</span>
+        }
+    }
+
+    // ----------------------------------------------------------
+    // PUT /verfahren/{id}
+    // ----------------------------------------------------------
+    @PUT
+    @Path(&quot;/{id}&quot;)
+    @Transactional
+    public Response update(@PathParam(&quot;id&quot;) Long id, Verfahren upd) {
+<span class="fc" id="L238">        Verfahren v = em.find(Verfahren.class, id);</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (v == null) return Response.status(Response.Status.NOT_FOUND).build();</span>
+
+<span class="fc" id="L241">        v.setAktenzeichen(upd.getAktenzeichen());</span>
+<span class="fc" id="L242">        v.setBezeichnung(upd.getBezeichnung());</span>
+<span class="fc" id="L243">        v.setGericht(upd.getGericht());</span>
+<span class="fc" id="L244">        v.setStatus(upd.getStatus());</span>
+<span class="fc" id="L245">        v.setDatumEingang(upd.getDatumEingang());</span>
+<span class="fc" id="L246">        v.setDatumUrteil(upd.getDatumUrteil());</span>
+<span class="fc" id="L247">        v.setNotizen(upd.getNotizen());</span>
+
+<span class="fc" id="L249">        em.merge(v);</span>
+<span class="fc" id="L250">        return Response.ok(v).build();</span>
+    }
+
+    // ----------------------------------------------------------
+    // DELETE /verfahren/{id}
+    // ----------------------------------------------------------
+    @DELETE
+    @Path(&quot;/{id}&quot;)
+    @Transactional
+    public Response delete(@PathParam(&quot;id&quot;) Long id) {
+<span class="fc" id="L260">        Verfahren v = em.find(Verfahren.class, id);</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">        if (v == null) return Response.status(Response.Status.NOT_FOUND).build();</span>
+<span class="fc" id="L262">        em.remove(v);</span>
+<span class="fc" id="L263">        return Response.noContent().build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

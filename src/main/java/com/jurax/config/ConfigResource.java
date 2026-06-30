@@ -5,7 +5,8 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.*;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 
 /**
  * REST-Endpunkt zur Erstkonfiguration von JuraX.

@@ -197,7 +197,7 @@
 <header>
   <h1>⚖ JuraX – Verfahrensverwaltung</h1>
   <button class="btn" onclick="openUploadModal()">+ Verfahren / PDF hochladen</button>
-  <button class="btn-outline" onclick="openBatchModal()" style="margin-left:8px">📂 Mehrere PDFs hochladen</button>
+  <button class="btn-outline" onclick="openBatchModal()" style="margin-left:8px">Mehrere PDFs hochladen</button>
 </header>
 
 <!-- Wurzelverzeichnis-Anzeige -->
@@ -218,7 +218,7 @@
   <input id="jahrInput"  type="number" placeholder="Jahr"  min="1900" max="2099"/>
   <input id="monatInput" type="number" placeholder="Monat" min="1"    max="12"/>
   <input id="tagInput"   type="number" placeholder="Tag"   min="1"    max="31"/>
-  <button class="btn" onclick="searchDatum()">📅 Datum</button>
+  <button class="btn" onclick="searchDatum()">Datum</button>
   <button class="btn-outline" onclick="reset()">↺ Zurücksetzen</button>
   <span id="resultInfo">Lade …</span>
 </div>
@@ -295,7 +295,7 @@
 <!-- Batch-Upload-Dialog -->
 <div class="modal-overlay" id="batchOverlay" onclick="closeBatchOutside(event)">
   <div class="modal" style="max-width:720px;width:95%">
-    <h2>📂 Mehrere PDFs hochladen</h2>
+    <h2>Mehrere PDFs hochladen</h2>
     <p style="font-size:.85rem;color:#555;margin-bottom:12px">
       Wähle eine oder mehrere PDF-Dateien aus. Für jede Datei kannst du das
       <strong>Ablage-Datum</strong> individuell festlegen — es bestimmt den Ordner
@@ -335,7 +335,7 @@
     </div>
     <div class="modal-footer">
       <button class="btn-outline" onclick="closeBatchModal()">Schließen</button>
-      <button class="btn" id="batchSaveBtn" onclick="saveBatch()" style="display:none">⬆ Alle hochladen</button>
+      <button class="btn" id="batchSaveBtn" onclick="saveBatch()" style="display:none">Alle hochladen</button>
     </div>
   </div>
 </div>
@@ -445,15 +445,15 @@ function renderVisible() {
     const bez = v.bezeichnung  ?? '—';
     const ger = v.gericht      ?? '—';
     const ein = v.datumEingang ? v.datumEingang.substring(0,10) : '—';
-    const pdf = v.dateiName ? `<button class="btn btn-sm btn-pdf" onclick="openPdf(${v.id})">📄 PDF</button>` : '—';
+    const pdf = v.dateiName ? `<button class="btn btn-sm btn-pdf" onclick="openPdf(${v.id})">PDF</button>` : '—';
     h += `<tr>
       <td><strong>${az}</strong></td>
       <td>${bez}</td><td>${ger}</td><td>${ein}</td>
       <td><span class="badge badge-${v.status}">${statusLabel(v.status)}</span></td>
       <td>${pdf}</td>
       <td>
-        <button class="btn btn-sm btn-warning" onclick="editVerfahren(${v.id})">✏</button>
-        <button class="btn btn-sm btn-danger"  onclick="deleteVerfahren(${v.id})">🗑</button>
+        <button class="btn btn-sm btn-warning" onclick="editVerfahren(${v.id})">Bearb.</button>
+        <button class="btn btn-sm btn-danger"  onclick="deleteVerfahren(${v.id})">Lösch.</button>
       </td>
     </tr>`;
   }

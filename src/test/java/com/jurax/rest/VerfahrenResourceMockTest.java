@@ -27,12 +27,17 @@ class VerfahrenResourceMockTest {
 
     /** Temporäres Verzeichnis als Wurzelverzeichnis für PDF-Tests */
     private static Path tempRoot;
+    /** Ursprünglicher Inhalt von root.txt — wird nach den Tests wiederhergestellt */
+    private static String originalRootTxt;
 
     @BeforeAll
     static void createRootTxt() throws Exception {
         tempRoot = Files.createTempDirectory("jurax-test-root");
-        // root.txt im working directory ablegen, damit getRootDir() sie findet
         Path rootTxt = Paths.get(System.getProperty("user.dir"), "root.txt");
+        // Vorhandenen Inhalt sichern, damit er nach den Tests wiederhergestellt werden kann
+        if (Files.exists(rootTxt)) {
+            originalRootTxt = Files.readString(rootTxt, java.nio.charset.StandardCharsets.UTF_8);
+        }
         Files.writeString(rootTxt, tempRoot.toAbsolutePath().toString());
         // rootDir-Cache zurücksetzen, damit der neue Wert gelesen wird
         Field f = VerfahrenResource.class.getDeclaredField("rootDir");
@@ -42,7 +47,13 @@ class VerfahrenResourceMockTest {
 
     @AfterAll
     static void cleanupRootTxt() throws Exception {
-        Files.deleteIfExists(Paths.get(System.getProperty("user.dir"), "root.txt"));
+        Path rootTxt = Paths.get(System.getProperty("user.dir"), "root.txt");
+        // Ursprünglichen Inhalt wiederherstellen oder Datei löschen wenn sie vorher nicht existierte
+        if (originalRootTxt != null) {
+            Files.writeString(rootTxt, originalRootTxt, java.nio.charset.StandardCharsets.UTF_8);
+        } else {
+            Files.deleteIfExists(rootTxt);
+        }
         // Cache zurücksetzen
         Field f = VerfahrenResource.class.getDeclaredField("rootDir");
         f.setAccessible(true);
@@ -267,12 +278,12 @@ class VerfahrenResourceMockTest {
     // ── upload (Multipart) ────────────────────────────────
 
     @Test void upload_missingAz_returns400() {
-        Response r = resource.upload(null, null, null, "offen", null, null, null, null);
+        Response r = resource.upload(null, null, null, "offen", null, null, null, null, null);
         assertEquals(400, r.getStatus());
     }
 
     @Test void upload_blankAz_returns400() {
-        Response r = resource.upload("  ", null, null, "offen", null, null, null, null);
+        Response r = resource.upload("  ", null, null, "offen", null, null, null, null, null);
         assertEquals(400, r.getStatus());
     }
 
@@ -281,7 +292,7 @@ class VerfahrenResourceMockTest {
         doNothing().when(em).flush();
         // Kein InputStream → Datei wird nicht geschrieben, aber Eintrag angelegt
         Response r = resource.upload("14 C 1/24", "Test", "AG", "offen",
-                                     "2024-03-15", "Notiz", "test.pdf", null);
+                                     "2024-03-15", null, "Notiz", "test.pdf", null);
         assertEquals(201, r.getStatus());
     }
 }

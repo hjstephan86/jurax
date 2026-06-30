@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="de"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>ConfigResource.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JuraX – Rechtliche Verfahrensverwaltung</a> &gt; <a href="index.source.html" class="el_package">com.jurax.config</a> &gt; <span class="el_source">ConfigResource.java</span></div><h1>ConfigResource.java</h1><pre class="source lang-java linenums">package com.jurax.config;
+
+import jakarta.enterprise.context.RequestScoped;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.*;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Paths;
+
+/**
+ * REST-Endpunkt zur Erstkonfiguration von JuraX.
+ *
+ * GET  /api/config/setup    — Prüft ob Wurzelverzeichnis und KI API-Key konfiguriert sind.
+ * POST /api/config/setup    — Speichert Wurzelverzeichnis (root.txt) und KI API-Key (ai_api_key.txt).
+ */
+@Path(&quot;/config&quot;)
+@Produces(MediaType.APPLICATION_JSON)
+@RequestScoped
+<span class="nc" id="L20">public class ConfigResource {</span>
+
+<span class="nc" id="L22">    private static final java.nio.file.Path ROOT_TXT =</span>
+<span class="nc" id="L23">        Paths.get(System.getProperty(&quot;user.dir&quot;), &quot;root.txt&quot;);</span>
+
+<span class="nc" id="L25">    private static final java.nio.file.Path AI_KEY_TXT =</span>
+<span class="nc" id="L26">        Paths.get(System.getProperty(&quot;user.dir&quot;), &quot;ai_api_key.txt&quot;);</span>
+
+    // ── GET /api/config/setup ─────────────────────────────────────────────
+
+    @GET
+    @Path(&quot;/setup&quot;)
+    public Response getSetup() {
+<span class="nc" id="L33">        boolean rootConfigured = isConfigured(ROOT_TXT);</span>
+<span class="nc" id="L34">        boolean keyConfigured  = isConfigured(AI_KEY_TXT);</span>
+<span class="nc" id="L35">        String json = String.format(</span>
+            &quot;{\&quot;rootConfigured\&quot;:%b,\&quot;keyConfigured\&quot;:%b,\&quot;configured\&quot;:%b}&quot;,
+<span class="nc bnc" id="L37" title="All 4 branches missed.">            rootConfigured, keyConfigured, rootConfigured &amp;&amp; keyConfigured);</span>
+<span class="nc" id="L38">        return Response.ok(json).build();</span>
+    }
+
+    // ── POST /api/config/setup ────────────────────────────────────────────
+
+    @POST
+    @Path(&quot;/setup&quot;)
+    @Consumes(MediaType.APPLICATION_JSON)
+    public Response saveSetup(SetupRequest req) {
+<span class="nc bnc" id="L47" title="All 2 branches missed.">        if (req == null) {</span>
+<span class="nc" id="L48">            return bad(&quot;Keine Konfigurationsdaten empfangen.&quot;);</span>
+        }
+
+        // Wurzelverzeichnis
+<span class="nc bnc" id="L52" title="All 4 branches missed.">        if (req.rootdir == null || req.rootdir.isBlank()) {</span>
+<span class="nc" id="L53">            return bad(&quot;Wurzelverzeichnis darf nicht leer sein.&quot;);</span>
+        }
+<span class="nc" id="L55">        String rootPath = req.rootdir.strip();</span>
+        try {
+<span class="nc" id="L57">            java.nio.file.Path dir = Paths.get(rootPath);</span>
+<span class="nc bnc" id="L58" title="All 2 branches missed.">            if (!Files.exists(dir)) Files.createDirectories(dir);</span>
+<span class="nc" id="L59">        } catch (IOException e) {</span>
+<span class="nc" id="L60">            return bad(&quot;Verzeichnis konnte nicht angelegt werden: &quot; + e.getMessage());</span>
+<span class="nc" id="L61">        }</span>
+        try {
+<span class="nc" id="L63">            Files.writeString(ROOT_TXT, rootPath, StandardCharsets.UTF_8);</span>
+<span class="nc" id="L64">        } catch (IOException e) {</span>
+<span class="nc" id="L65">            return err(&quot;root.txt konnte nicht geschrieben werden: &quot; + e.getMessage());</span>
+<span class="nc" id="L66">        }</span>
+
+        // KI API-Key (optional — Warnung wenn leer, aber kein Fehler)
+<span class="nc bnc" id="L69" title="All 2 branches missed.">        String apiKey = req.aiApiKey != null ? req.aiApiKey.strip() : &quot;&quot;;</span>
+<span class="nc bnc" id="L70" title="All 2 branches missed.">        if (!apiKey.isEmpty()) {</span>
+            try {
+<span class="nc" id="L72">                Files.writeString(AI_KEY_TXT, apiKey, StandardCharsets.UTF_8);</span>
+<span class="nc" id="L73">            } catch (IOException e) {</span>
+<span class="nc" id="L74">                return err(&quot;ai_api_key.txt konnte nicht geschrieben werden: &quot; + e.getMessage());</span>
+<span class="nc" id="L75">            }</span>
+        }
+
+        // Cache in VerfahrenResource und StartupMigration zurücksetzen
+<span class="nc" id="L79">        resetCache(&quot;com.jurax.rest.VerfahrenResource&quot;, &quot;rootDir&quot;);</span>
+<span class="nc" id="L80">        resetCache(&quot;com.jurax.startup.StartupMigration&quot;, &quot;rootDir&quot;);</span>
+
+<span class="nc" id="L82">        return Response.ok(String.format(</span>
+            &quot;{\&quot;configured\&quot;:true,\&quot;rootdir\&quot;:\&quot;%s\&quot;,\&quot;keyConfigured\&quot;:%b}&quot;,
+<span class="nc bnc" id="L84" title="All 2 branches missed.">            escape(rootPath), !apiKey.isEmpty())).build();</span>
+    }
+
+    // ── Hilfsmethoden ─────────────────────────────────────────────────────
+
+    private boolean isConfigured(java.nio.file.Path p) {
+        try {
+<span class="nc bnc" id="L91" title="All 4 branches missed.">            return Files.exists(p) &amp;&amp; !Files.readString(p, StandardCharsets.UTF_8).isBlank();</span>
+<span class="nc" id="L92">        } catch (IOException e) { return false; }</span>
+    }
+
+    private Response bad(String msg) {
+<span class="nc" id="L96">        return Response.status(Response.Status.BAD_REQUEST)</span>
+<span class="nc" id="L97">            .entity(&quot;{\&quot;error\&quot;:\&quot;&quot; + escape(msg) + &quot;\&quot;}&quot;).build();</span>
+    }
+
+    private Response err(String msg) {
+<span class="nc" id="L101">        return Response.serverError()</span>
+<span class="nc" id="L102">            .entity(&quot;{\&quot;error\&quot;:\&quot;&quot; + escape(msg) + &quot;\&quot;}&quot;).build();</span>
+    }
+
+    private String escape(String s) {
+<span class="nc" id="L106">        return s.replace(&quot;\\&quot;, &quot;\\\\&quot;).replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;);</span>
+    }
+
+    private void resetCache(String className, String fieldName) {
+        try {
+<span class="nc" id="L111">            Class&lt;?&gt; cls = Class.forName(className);</span>
+<span class="nc" id="L112">            java.lang.reflect.Field f = cls.getDeclaredField(fieldName);</span>
+<span class="nc" id="L113">            f.setAccessible(true);</span>
+<span class="nc" id="L114">            f.set(null, null);</span>
+<span class="nc" id="L115">        } catch (Exception ignored) {}</span>
+<span class="nc" id="L116">    }</span>
+
+    // ── Request-Klasse ────────────────────────────────────────────────────
+
+<span class="nc" id="L120">    public static class SetupRequest {</span>
+        public String rootdir;
+        public String aiApiKey;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>

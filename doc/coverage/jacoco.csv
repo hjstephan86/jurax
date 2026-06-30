@@ -1,0 +1,9 @@
+GROUP,PACKAGE,CLASS,INSTRUCTION_MISSED,INSTRUCTION_COVERED,BRANCH_MISSED,BRANCH_COVERED,LINE_MISSED,LINE_COVERED,COMPLEXITY_MISSED,COMPLEXITY_COVERED,METHOD_MISSED,METHOD_COVERED
+JuraX – Rechtliche Verfahrensverwaltung,com.jurax.config,ConfigResource,238,0,22,0,47,0,20,0,9,0
+JuraX – Rechtliche Verfahrensverwaltung,com.jurax.config,ConfigResource.SetupRequest,3,0,0,0,1,0,1,0,1,0
+JuraX – Rechtliche Verfahrensverwaltung,com.jurax.startup,StartupMigration.new SimpleFileVisitor() {...},19,0,2,0,4,0,3,0,2,0
+JuraX – Rechtliche Verfahrensverwaltung,com.jurax.startup,StartupMigration,877,0,92,0,171,0,64,0,18,0
+JuraX – Rechtliche Verfahrensverwaltung,com.jurax.startup,StartupMigration.DateClassification,12,0,0,0,3,0,1,0,1,0
+JuraX – Rechtliche Verfahrensverwaltung,com.jurax.rest,RestApplication,3,0,0,0,1,0,1,0,1,0
+JuraX – Rechtliche Verfahrensverwaltung,com.jurax.rest,VerfahrenResource,65,387,12,30,14,95,11,22,0,12
+JuraX – Rechtliche Verfahrensverwaltung,com.jurax.entity,Verfahren,15,106,0,0,5,32,5,28,5,28

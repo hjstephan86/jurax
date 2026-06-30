@@ -50,7 +50,7 @@ PDF-Ablage nach Datum
 
 | Komponente | Version |
 |---|---|
-| Java JDK | 21 |
+| Java JDK | 21+ (getestet mit JDK 26) |
 | Apache Maven | 3.9+ |
 | PostgreSQL | 18.4 |
 | WildFly | 40.0.1.Final |
@@ -68,11 +68,39 @@ cd jurax
 
 ### 2. PostgreSQL einrichten
 
+**Linux/macOS:**
 ```bash
 psql -U postgres -c "CREATE DATABASE juraxdb;"
 psql -U postgres -c "CREATE USER juraxuser WITH PASSWORD 'jurax';"
 psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE juraxdb TO juraxuser;"
+psql -U postgres -d juraxdb -c "GRANT ALL ON SCHEMA public TO juraxuser;"
 psql -U juraxuser -d juraxdb -f schema.sql
+```
+
+**Windows (PostgreSQL als Binär-Distribution, z. B. unter `%USERPROFILE%\Downloads\postgresql-18.4-2-windows-x64-binaries\pgsql`):**
+
+PostgreSQL muss zunächst initialisiert und gestartet werden:
+```powershell
+$pgBin = "C:\...\postgresql-18.4-2-windows-x64-binaries\pgsql\bin"
+$pgData = "C:\Users\<user>\pg_data"
+
+# Cluster initialisieren
+"postgres" | Out-File "$env:TEMP\pgpass.txt" -Encoding ascii -NoNewline
+& "$pgBin\initdb.exe" -D $pgData -U postgres -A md5 "--pwfile=$env:TEMP\pgpass.txt"
+
+# Server starten
+& "$pgBin\pg_ctl.exe" -D $pgData -l "$pgData\pg.log" start
+
+# Datenbank und Benutzer anlegen
+$env:PGPASSWORD = "postgres"
+& "$pgBin\psql.exe" -U postgres -c "CREATE DATABASE juraxdb;"
+& "$pgBin\psql.exe" -U postgres -c "CREATE USER juraxuser WITH PASSWORD 'jurax';"
+& "$pgBin\psql.exe" -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE juraxdb TO juraxuser;"
+& "$pgBin\psql.exe" -U postgres -d juraxdb -c "GRANT ALL ON SCHEMA public TO juraxuser;"
+
+# Schema laden
+$env:PGPASSWORD = "jurax"
+& "$pgBin\psql.exe" -U juraxuser -d juraxdb -f schema.sql
 ```
 
 `schema.sql` richtet ein:
@@ -85,12 +113,52 @@ psql -U juraxuser -d juraxdb -f schema.sql
 
 ### 3. WildFly DataSource konfigurieren
 
+#### 3a. PostgreSQL-Modul anlegen
+
+Das PostgreSQL JDBC-JAR (`postgresql-42.7.3.jar`) muss als WildFly-Modul eingebunden werden. Das JAR liegt nach einem `mvn package` im lokalen Maven-Repository unter `~/.m2/repository/org/postgresql/postgresql/42.7.3/`.
+
+Verzeichnis anlegen und Datei kopieren:
+```bash
+mkdir -p $WILDFLY_HOME/modules/org/postgresql/main
+cp ~/.m2/repository/org/postgresql/postgresql/42.7.3/postgresql-42.7.3.jar \
+   $WILDFLY_HOME/modules/org/postgresql/main/
+```
+
+Dann `module.xml` in demselben Verzeichnis anlegen:
 ```xml
-<datasource jndi-name="java:/JuraxDS" pool-name="JuraxDS" enabled="true">
+<?xml version="1.0" encoding="UTF-8"?>
+<module name="org.postgresql" xmlns="urn:jboss:module:1.9">
+    <resources>
+        <resource-root path="postgresql-42.7.3.jar"/>
+    </resources>
+    <dependencies>
+        <module name="javax.api"/>
+        <module name="javax.transaction.api"/>
+    </dependencies>
+</module>
+```
+
+#### 3b. Treiber und DataSource in `standalone.xml` eintragen
+
+In `$WILDFLY_HOME/standalone/configuration/standalone.xml` im Abschnitt `<datasources>` ergänzen:
+
+```xml
+<datasource jndi-name="java:/JuraxDS" pool-name="JuraxDS" enabled="true" use-java-context="true">
     <connection-url>jdbc:postgresql://localhost:5432/juraxdb</connection-url>
     <driver>postgresql</driver>
+    <pool>
+        <min-pool-size>5</min-pool-size>
+        <max-pool-size>25</max-pool-size>
+    </pool>
     <security user-name="juraxuser" password="jurax"/>
 </datasource>
+```
+
+Im Abschnitt `<drivers>` ergänzen (falls noch nicht vorhanden):
+```xml
+<driver name="postgresql" module="org.postgresql">
+    <xa-datasource-class>org.postgresql.xa.PGXADataSource</xa-datasource-class>
+</driver>
 ```
 
 ### 4. Ersteinrichtung beim ersten Start
@@ -204,6 +272,7 @@ Ermöglicht die gleichzeitige Auswahl beliebig vieler PDF-Dateien. Für jede Dat
 
 ## Anwendung starten
 
+**Linux/macOS:**
 ```bash
 # 1. WildFly starten
 $WILDFLY_HOME/bin/standalone.sh
@@ -222,11 +291,32 @@ cp target/jurax.war $WILDFLY_HOME/standalone/deployments/
 open http://localhost:8080/jurax/
 ```
 
+**Windows (PowerShell):**
+```powershell
+# 1. WildFly starten
+Start-Process -FilePath "cmd.exe" -ArgumentList "/c `"$env:WILDFLY_HOME\bin\standalone.bat`"" -WindowStyle Minimized
+
+# 2. Projekt bauen
+mvn clean package -DskipTests
+
+# 3. WAR deployen (WildFly erkennt neue Dateien automatisch)
+Copy-Item target\jurax.war "$env:WILDFLY_HOME\standalone\deployments\" -Force
+
+# 4. Aufrufen
+Start-Process "http://localhost:8080/jurax/"
+```
+
 **Hot-Redeploy** (ohne WildFly-Neustart):
 ```bash
+# Linux/macOS
 mvn clean package -DskipTests
 $WILDFLY_HOME/bin/jboss-cli.sh --connect \
   --command="deploy target/jurax.war --force"
+```
+```powershell
+# Windows (alternativ: WAR direkt kopieren — WildFly redeploys automatisch)
+mvn clean package -DskipTests
+Copy-Item target\jurax.war "$env:WILDFLY_HOME\standalone\deployments\" -Force
 ```
 
 ---
@@ -234,7 +324,7 @@ $WILDFLY_HOME/bin/jboss-cli.sh --connect \
 ## Testausführung
 
 ```bash
-# Unit- und Integrationstests
+# Unit- und Integrationstests (Linux/macOS)
 mvn test -Dsurefire.excludes="**/ui/**" -Djacoco.skip=true
 
 # Alle Tests + JaCoCo-Report (WildFly muss laufen für UI-Tests)
@@ -249,6 +339,15 @@ mvn exec:java -e \
 open doc/coverage/index.html
 ```
 
+**Windows (PowerShell):** Die `-D`-Argumente müssen mit Backtick-Escaping übergeben werden:
+```powershell
+# Unit- und Integrationstests
+mvn test `"-Dsurefire.excludes=**/ui/**`" `"-Djacoco.skip=true`"
+
+# Playwright-Browser installieren
+mvn exec:java -e `"-Dexec.mainClass=com.microsoft.playwright.CLI`" `"-Dexec.args=install chromium`"
+```
+
 | Klasse | Typ | Tests |
 |---|---|---|
 | `VerfahrenResourceMockTest` | Unit (Mockito) | ~25 |
@@ -257,3 +356,50 @@ open doc/coverage/index.html
 | **Gesamt** | | **~65** |
 
 Konfiguriertes Minimum: **87 %**
+
+---
+
+## Bekannte Fixes beim Aufsetzen
+
+### Kompilierfehler: `Path` mehrdeutig (`ConfigResource.java`)
+
+Beim Kompilieren mit JDK 21+ kann folgender Fehler auftreten:
+
+```
+Referenz zu Path ist mehrdeutig:
+  java.nio.file.Path vs jakarta.ws.rs.Path
+```
+
+**Ursache:** Die Klasse `ConfigResource.java` importierte `java.nio.file.*` (Wildcard) und `jakarta.ws.rs.*` (Wildcard). Beide enthalten einen Typ namens `Path`.
+
+**Lösung:** Den Wildcard-Import `import java.nio.file.*;` durch spezifische Imports ersetzen:
+```java
+// Statt:
+import java.nio.file.*;
+
+// Verwenden:
+import java.nio.file.Files;
+import java.nio.file.Paths;
+```
+
+Da `java.nio.file.Path` in der Klasse bereits überall vollständig qualifiziert (`java.nio.file.Path`) verwendet wird, ist dieser Wildcard-Import nicht notwendig.
+
+### Test-Kompilierfehler: `upload()` — falsche Parameteranzahl
+
+Die Methode `upload()` in `VerfahrenResource` wurde um den Parameter `ablageDatumStr` erweitert (Position 6), die Testaufrufe in `VerfahrenResourceMockTest` wurden jedoch nicht angepasst.
+
+**Lösung:** In `VerfahrenResourceMockTest.java` bei allen `upload()`-Aufrufen `null` für `ablageDatumStr` als 6. Argument ergänzen:
+```java
+// Statt (8 Argumente):
+resource.upload(az, bez, ger, status, datum, notizen, dateiName, stream)
+
+// Richtig (9 Argumente):
+resource.upload(az, bez, ger, status, datum, ablageDatum, notizen, dateiName, stream)
+```
+
+### PostgreSQL: Schema-Berechtigungen
+
+Bei PostgreSQL 18+ fehlen dem neu angelegten Benutzer standardmäßig die Schreib-Rechte auf das `public`-Schema. Nach dem Anlegen des Benutzers muss daher folgendes ausgeführt werden:
+```sql
+GRANT ALL ON SCHEMA public TO juraxuser;
+```

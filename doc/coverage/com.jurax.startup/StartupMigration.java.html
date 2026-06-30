@@ -1,0 +1,367 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="de"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../jacoco-resources/report.gif" type="image/gif"/><title>StartupMigration.java</title><link rel="stylesheet" href="../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../index.html" class="el_report">JuraX – Rechtliche Verfahrensverwaltung</a> &gt; <a href="index.source.html" class="el_package">com.jurax.startup</a> &gt; <span class="el_source">StartupMigration.java</span></div><h1>StartupMigration.java</h1><pre class="source lang-java linenums">package com.jurax.startup;
+
+import jakarta.annotation.PostConstruct;
+import jakarta.ejb.Singleton;
+import jakarta.ejb.Startup;
+import java.io.*;
+import java.net.URI;
+import java.net.http.*;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
+import java.time.LocalDate;
+import java.util.*;
+import java.util.logging.Logger;
+import java.util.stream.Collectors;
+
+/**
+ * Wird beim WildFly-Start automatisch ausgeführt.
+ *
+ * Prüft, ob das Wurzelverzeichnis (aus root.txt) bereits die erwartete
+ * Ordnerstruktur {root}/{jahr}/{monat}/{tag}/ enthält.
+ *
+ * Falls nicht:
+ *   1. Alle PDF-Dokumente werden in {root}/bak/ gesichert.
+ *   2. Für jedes Dokument in bak/ befragt das System die Claude-API,
+ *      um Jahr, Monat und Tag aus Dateiname und Metadaten zu ermitteln.
+ *   3. Die Dokumente werden in {root}/{jahr}/{monat}/{tag}/ verschoben.
+ *
+ * Der KI API-Key wird aus der Datei ai_api_key.txt im Projektverzeichnis gelesen.
+ */
+@Singleton
+@Startup
+<span class="nc" id="L33">public class StartupMigration {</span>
+
+<span class="nc" id="L35">    private static final Logger LOG = Logger.getLogger(StartupMigration.class.getName());</span>
+
+    // Pfad zur root.txt im Projektverzeichnis
+<span class="nc" id="L38">    private static final java.nio.file.Path ROOT_TXT =</span>
+<span class="nc" id="L39">        Paths.get(System.getProperty(&quot;user.dir&quot;), &quot;root.txt&quot;);</span>
+
+    // Pfad zur ai_api_key.txt im Projektverzeichnis
+<span class="nc" id="L42">    private static final java.nio.file.Path API_KEY_TXT =</span>
+<span class="nc" id="L43">        Paths.get(System.getProperty(&quot;user.dir&quot;), &quot;ai_api_key.txt&quot;);</span>
+
+    @PostConstruct
+    public void init() {
+        try {
+<span class="nc" id="L48">            String rootDir = readFile(ROOT_TXT, &quot;root.txt&quot;);</span>
+<span class="nc" id="L49">            java.nio.file.Path root = Paths.get(rootDir);</span>
+
+<span class="nc bnc" id="L51" title="All 2 branches missed.">            if (!Files.exists(root)) {</span>
+<span class="nc" id="L52">                Files.createDirectories(root);</span>
+<span class="nc" id="L53">                LOG.info(&quot;[JuraX] Wurzelverzeichnis angelegt: &quot; + root);</span>
+<span class="nc" id="L54">                return;</span>
+            }
+
+<span class="nc bnc" id="L57" title="All 2 branches missed.">            if (hasCorrectStructure(root)) {</span>
+<span class="nc" id="L58">                LOG.info(&quot;[JuraX] Ordnerstruktur korrekt — keine Migration notwendig.&quot;);</span>
+<span class="nc" id="L59">                return;</span>
+            }
+
+<span class="nc" id="L62">            LOG.warning(&quot;[JuraX] Unbekannte Ordnerstruktur erkannt — starte Migration.&quot;);</span>
+<span class="nc" id="L63">            List&lt;java.nio.file.Path&gt; pdfs = collectPdfs(root);</span>
+
+<span class="nc bnc" id="L65" title="All 2 branches missed.">            if (pdfs.isEmpty()) {</span>
+<span class="nc" id="L66">                LOG.info(&quot;[JuraX] Keine PDF-Dokumente gefunden — nichts zu migrieren.&quot;);</span>
+<span class="nc" id="L67">                return;</span>
+            }
+
+            // 1. Sicherung in bak/
+<span class="nc" id="L71">            java.nio.file.Path bak = root.resolve(&quot;bak&quot;);</span>
+<span class="nc" id="L72">            Files.createDirectories(bak);</span>
+<span class="nc bnc" id="L73" title="All 2 branches missed.">            for (java.nio.file.Path pdf : pdfs) {</span>
+<span class="nc" id="L74">                java.nio.file.Path dest = bak.resolve(pdf.getFileName());</span>
+                // Bei gleichnamigen Dateien: Präfix mit Index
+<span class="nc bnc" id="L76" title="All 2 branches missed.">                if (Files.exists(dest)) {</span>
+<span class="nc" id="L77">                    String name = pdf.getFileName().toString();</span>
+<span class="nc" id="L78">                    int dot = name.lastIndexOf('.');</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                    String base = dot &gt;= 0 ? name.substring(0, dot) : name;</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">                    String ext  = dot &gt;= 0 ? name.substring(dot)    : &quot;&quot;;</span>
+<span class="nc" id="L81">                    int i = 1;</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">                    while (Files.exists(dest)) {</span>
+<span class="nc" id="L83">                        dest = bak.resolve(base + &quot;_&quot; + i + ext);</span>
+<span class="nc" id="L84">                        i++;</span>
+                    }
+                }
+<span class="nc" id="L87">                Files.move(pdf, dest, StandardCopyOption.ATOMIC_MOVE);</span>
+<span class="nc" id="L88">                LOG.info(&quot;[JuraX] Gesichert: &quot; + pdf.getFileName() + &quot; → bak/&quot;);</span>
+<span class="nc" id="L89">            }</span>
+
+            // 2. KI-gestützte Einsortierung
+<span class="nc" id="L92">            String apiKey = readApiKey();</span>
+<span class="nc" id="L93">            List&lt;java.nio.file.Path&gt; bakPdfs = collectPdfs(bak);</span>
+
+<span class="nc bnc" id="L95" title="All 2 branches missed.">            for (java.nio.file.Path pdf : bakPdfs) {</span>
+                try {
+<span class="nc" id="L97">                    DateClassification date = classifyWithAI(pdf, apiKey);</span>
+<span class="nc" id="L98">                    java.nio.file.Path targetDir = root.resolve(</span>
+<span class="nc" id="L99">                        String.format(&quot;%d/%02d/%02d&quot;, date.year, date.month, date.day));</span>
+<span class="nc" id="L100">                    Files.createDirectories(targetDir);</span>
+<span class="nc" id="L101">                    java.nio.file.Path target = targetDir.resolve(pdf.getFileName());</span>
+                    // Eindeutigen Namen sicherstellen
+<span class="nc bnc" id="L103" title="All 2 branches missed.">                    if (Files.exists(target)) {</span>
+<span class="nc" id="L104">                        String name = pdf.getFileName().toString();</span>
+<span class="nc" id="L105">                        int dot = name.lastIndexOf('.');</span>
+<span class="nc bnc" id="L106" title="All 2 branches missed.">                        String base = dot &gt;= 0 ? name.substring(0, dot) : name;</span>
+<span class="nc bnc" id="L107" title="All 2 branches missed.">                        String ext  = dot &gt;= 0 ? name.substring(dot)    : &quot;&quot;;</span>
+<span class="nc" id="L108">                        int i = 1;</span>
+<span class="nc bnc" id="L109" title="All 2 branches missed.">                        while (Files.exists(target)) {</span>
+<span class="nc" id="L110">                            target = targetDir.resolve(base + &quot;_&quot; + i + ext);</span>
+<span class="nc" id="L111">                            i++;</span>
+                        }
+                    }
+<span class="nc" id="L114">                    Files.copy(pdf, target, StandardCopyOption.REPLACE_EXISTING);</span>
+<span class="nc" id="L115">                    LOG.info(String.format(&quot;[JuraX] Eingeordnet: %s → %d/%02d/%02d/&quot;,</span>
+<span class="nc" id="L116">                        pdf.getFileName(), date.year, date.month, date.day));</span>
+<span class="nc" id="L117">                } catch (Exception e) {</span>
+<span class="nc" id="L118">                    LOG.warning(&quot;[JuraX] Konnte &quot; + pdf.getFileName() +</span>
+<span class="nc" id="L119">                        &quot; nicht einordnen: &quot; + e.getMessage() +</span>
+                        &quot; — Datei verbleibt in bak/&quot;);
+<span class="nc" id="L121">                }</span>
+<span class="nc" id="L122">            }</span>
+
+<span class="nc" id="L124">            LOG.info(&quot;[JuraX] Migration abgeschlossen.&quot;);</span>
+
+<span class="nc" id="L126">        } catch (Exception e) {</span>
+<span class="nc" id="L127">            LOG.severe(&quot;[JuraX] Fehler beim Systemstart: &quot; + e.getMessage());</span>
+<span class="nc" id="L128">        }</span>
+<span class="nc" id="L129">    }</span>
+
+    // ── Hilfsmethoden ────────────────────────────────────────────────────────
+
+    /**
+     * Prüft, ob das Wurzelverzeichnis bereits die JuraX-Struktur enthält:
+     * mindestens ein Unterverzeichnis der Form {jahr}/{monat}/{tag}/.
+     * Verzeichnisse namens &quot;bak&quot; werden ignoriert.
+     */
+    private boolean hasCorrectStructure(java.nio.file.Path root) throws IOException {
+<span class="nc" id="L139">        try (var stream = Files.list(root)) {</span>
+<span class="nc" id="L140">            List&lt;java.nio.file.Path&gt; children = stream</span>
+<span class="nc" id="L141">                .filter(Files::isDirectory)</span>
+<span class="nc bnc" id="L142" title="All 2 branches missed.">                .filter(p -&gt; !p.getFileName().toString().equals(&quot;bak&quot;))</span>
+<span class="nc" id="L143">                .collect(Collectors.toList());</span>
+
+<span class="nc bnc" id="L145" title="All 2 branches missed.">            for (java.nio.file.Path child : children) {</span>
+<span class="nc" id="L146">                String name = child.getFileName().toString();</span>
+                // Erwartet: vierstellige Jahreszahl
+<span class="nc bnc" id="L148" title="All 2 branches missed.">                if (!name.matches(&quot;\\d{4}&quot;)) return false;</span>
+                // Prüfe ob Unterstruktur {monat}/{tag} vorhanden
+<span class="nc" id="L150">                try (var months = Files.list(child)) {</span>
+<span class="nc" id="L151">                    boolean hasMonth = months.filter(Files::isDirectory).anyMatch(m -&gt; {</span>
+<span class="nc" id="L152">                        try (var days = Files.list(m)) {</span>
+<span class="nc" id="L153">                            return days.filter(Files::isDirectory).findAny().isPresent();</span>
+<span class="nc" id="L154">                        } catch (IOException ex) { return false; }</span>
+                    });
+<span class="nc bnc" id="L156" title="All 2 branches missed.">                    if (hasMonth) return true;</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                }</span>
+<span class="nc" id="L158">            }</span>
+<span class="nc bnc" id="L159" title="All 4 branches missed.">        }</span>
+<span class="nc" id="L160">        return false;</span>
+    }
+
+    /**
+     * Sammelt rekursiv alle PDF-Dateien unterhalb von root,
+     * außer solchen in bak/ selbst.
+     */
+    private List&lt;java.nio.file.Path&gt; collectPdfs(java.nio.file.Path root) throws IOException {
+<span class="nc" id="L168">        List&lt;java.nio.file.Path&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="nc" id="L169">        Files.walkFileTree(root, new SimpleFileVisitor&lt;&gt;() {</span>
+            @Override
+            public FileVisitResult visitFile(java.nio.file.Path file, BasicFileAttributes attrs) {
+<span class="nc bnc" id="L172" title="All 2 branches missed.">                if (file.toString().toLowerCase().endsWith(&quot;.pdf&quot;)) {</span>
+<span class="nc" id="L173">                    result.add(file);</span>
+                }
+<span class="nc" id="L175">                return FileVisitResult.CONTINUE;</span>
+            }
+        });
+<span class="nc" id="L178">        return result;</span>
+    }
+
+    /**
+     * Liest eine einzeilige Textdatei und gibt den bereinigten Inhalt zurück.
+     */
+    private String readFile(java.nio.file.Path path, String label) throws IOException {
+<span class="nc bnc" id="L185" title="All 2 branches missed.">        if (!Files.exists(path)) {</span>
+<span class="nc" id="L186">            throw new IOException(label + &quot; nicht gefunden: &quot; + path.toAbsolutePath());</span>
+        }
+<span class="nc" id="L188">        String content = Files.readString(path, StandardCharsets.UTF_8).strip();</span>
+<span class="nc bnc" id="L189" title="All 2 branches missed.">        if (content.isEmpty()) {</span>
+<span class="nc" id="L190">            throw new IOException(label + &quot; ist leer.&quot;);</span>
+        }
+<span class="nc" id="L192">        return content;</span>
+    }
+
+    /**
+     * Liest den KI API-Key aus ai_api_key.txt.
+     * Falls die Datei fehlt, wird eine leere Zeichenkette zurückgegeben
+     * (Migration schlägt dann pro Datei mit einer Warnung fehl).
+     */
+    private String readApiKey() {
+        try {
+<span class="nc" id="L202">            return readFile(API_KEY_TXT, &quot;ai_api_key.txt&quot;);</span>
+<span class="nc" id="L203">        } catch (IOException e) {</span>
+<span class="nc" id="L204">            LOG.warning(&quot;[JuraX] ai_api_key.txt nicht gefunden — KI-Einsortierung nicht möglich.&quot;);</span>
+<span class="nc" id="L205">            return &quot;&quot;;</span>
+        }
+    }
+
+    /**
+     * Befragt die Claude-API, um aus dem Dateinamen das Datum (Jahr/Monat/Tag)
+     * zu ermitteln, unter dem das Dokument abzulegen ist.
+     *
+     * Rückgabe: DateClassification mit year, month, day.
+     * Falls kein Datum erkannt wird, wird das heutige Datum verwendet.
+     */
+    private DateClassification classifyWithAI(java.nio.file.Path pdf, String apiKey)
+            throws IOException, InterruptedException {
+
+<span class="nc bnc" id="L219" title="All 4 branches missed.">        if (apiKey == null || apiKey.isEmpty()) {</span>
+<span class="nc" id="L220">            LOG.warning(&quot;[JuraX] Kein API-Key — verwende heutiges Datum für: &quot; + pdf.getFileName());</span>
+<span class="nc" id="L221">            LocalDate today = LocalDate.now();</span>
+<span class="nc" id="L222">            return new DateClassification(today.getYear(), today.getMonthValue(), today.getDayOfMonth());</span>
+        }
+
+<span class="nc" id="L225">        String filename = pdf.getFileName().toString();</span>
+
+<span class="nc" id="L227">        String prompt = &quot;Du bist ein Assistent für ein Rechtsverwaltungssystem namens JuraX. &quot; +</span>
+            &quot;Deine Aufgabe ist es, aus dem Dateinamen eines juristischen Dokuments &quot; +
+            &quot;das relevante Datum (Jahr, Monat, Tag) zu ermitteln, unter dem es abgelegt werden soll.\n\n&quot; +
+            &quot;Dateiname: \&quot;&quot; + filename + &quot;\&quot;\n\n&quot; +
+            &quot;Analysiere den Dateinamen sorgfältig. Mögliche Hinweise auf ein Datum sind:\n&quot; +
+            &quot;- Jahreszahlen (z.B. 2024, 24, /24)\n&quot; +
+            &quot;- Monatsangaben (z.B. 03, März, Mar)\n&quot; +
+            &quot;- Tagesangaben\n&quot; +
+            &quot;- Aktenzeichen mit Jahreszahl (z.B. 14-C-123-24 → Jahr 2024)\n&quot; +
+            &quot;- Datumsmuster wie 2024-03-15 oder 15.03.2024\n\n&quot; +
+<span class="nc" id="L237">            &quot;Falls kein Datum erkennbar ist, nutze das aktuelle Jahr &quot; + LocalDate.now().getYear() + &quot;, Monat 1, Tag 1.\n\n&quot; +</span>
+            &quot;Antworte ausschließlich im JSON-Format, ohne Präambel oder Erklärung:\n&quot; +
+            &quot;{\&quot;year\&quot;: 2024, \&quot;month\&quot;: 3, \&quot;day\&quot;: 15, \&quot;reasoning\&quot;: \&quot;kurze Begründung\&quot;}&quot;;
+
+<span class="nc" id="L241">        String requestBody = &quot;{&quot;</span>
+            + &quot;\&quot;model\&quot;: \&quot;claude-sonnet-4-6\&quot;,&quot;
+            + &quot;\&quot;max_tokens\&quot;: 200,&quot;
+            + &quot;\&quot;messages\&quot;: [{\&quot;role\&quot;: \&quot;user\&quot;, \&quot;content\&quot;: &quot;
+<span class="nc" id="L245">            + jsonString(prompt)</span>
+            + &quot;}]&quot;
+            + &quot;}&quot;;
+
+<span class="nc" id="L249">        HttpRequest request = HttpRequest.newBuilder()</span>
+<span class="nc" id="L250">            .uri(URI.create(&quot;https://api.anthropic.com/v1/messages&quot;))</span>
+<span class="nc" id="L251">            .header(&quot;Content-Type&quot;, &quot;application/json&quot;)</span>
+<span class="nc" id="L252">            .header(&quot;x-api-key&quot;, apiKey)</span>
+<span class="nc" id="L253">            .header(&quot;anthropic-version&quot;, &quot;2023-06-01&quot;)</span>
+<span class="nc" id="L254">            .POST(HttpRequest.BodyPublishers.ofString(requestBody, StandardCharsets.UTF_8))</span>
+<span class="nc" id="L255">            .build();</span>
+
+<span class="nc" id="L257">        HttpClient client = HttpClient.newHttpClient();</span>
+<span class="nc" id="L258">        HttpResponse&lt;String&gt; response = client.send(request, HttpResponse.BodyHandlers.ofString());</span>
+
+<span class="nc bnc" id="L260" title="All 2 branches missed.">        if (response.statusCode() != 200) {</span>
+<span class="nc" id="L261">            throw new IOException(&quot;Claude API Fehler: HTTP &quot; + response.statusCode());</span>
+        }
+
+<span class="nc" id="L264">        return parseAIResponse(response.body(), filename);</span>
+    }
+
+    /**
+     * Parst die JSON-Antwort der Claude-API und extrahiert Jahr, Monat, Tag.
+     */
+    private DateClassification parseAIResponse(String responseBody, String filename) {
+        try {
+            // Extrahiere den Text-Inhalt aus der API-Antwort
+<span class="nc" id="L273">            String text = extractTextFromResponse(responseBody);</span>
+
+            // JSON-Felder parsen (einfach, ohne externe Bibliothek)
+<span class="nc" id="L276">            int year  = extractInt(text, &quot;year&quot;);</span>
+<span class="nc" id="L277">            int month = extractInt(text, &quot;month&quot;);</span>
+<span class="nc" id="L278">            int day   = extractInt(text, &quot;day&quot;);</span>
+
+            // Plausibilitätsprüfung
+<span class="nc bnc" id="L281" title="All 4 branches missed.">            if (year &lt; 1900 || year &gt; 2100) year = LocalDate.now().getYear();</span>
+<span class="nc bnc" id="L282" title="All 4 branches missed.">            if (month &lt; 1   || month &gt; 12)  month = 1;</span>
+<span class="nc bnc" id="L283" title="All 4 branches missed.">            if (day &lt; 1     || day &gt; 31)    day   = 1;</span>
+
+<span class="nc" id="L285">            String reasoning = extractString(text, &quot;reasoning&quot;);</span>
+<span class="nc" id="L286">            LOG.info(String.format(&quot;[JuraX] KI-Klassifizierung für '%s': %d/%02d/%02d — %s&quot;,</span>
+<span class="nc" id="L287">                filename, year, month, day, reasoning));</span>
+
+<span class="nc" id="L289">            return new DateClassification(year, month, day);</span>
+
+<span class="nc" id="L291">        } catch (Exception e) {</span>
+<span class="nc" id="L292">            LOG.warning(&quot;[JuraX] KI-Antwort konnte nicht geparst werden für '&quot; +</span>
+<span class="nc" id="L293">                filename + &quot;': &quot; + e.getMessage() + &quot; — verwende heutiges Datum&quot;);</span>
+<span class="nc" id="L294">            LocalDate today = LocalDate.now();</span>
+<span class="nc" id="L295">            return new DateClassification(today.getYear(), today.getMonthValue(), today.getDayOfMonth());</span>
+        }
+    }
+
+    /** Extrahiert den Textinhalt aus einer Claude-API-JSON-Antwort. */
+    private String extractTextFromResponse(String json) {
+        // &quot;content&quot;:[{&quot;type&quot;:&quot;text&quot;,&quot;text&quot;:&quot;...&quot;}]
+<span class="nc" id="L302">        int textIdx = json.indexOf(&quot;\&quot;text\&quot;:&quot;);</span>
+<span class="nc bnc" id="L303" title="All 2 branches missed.">        if (textIdx &lt; 0) throw new RuntimeException(&quot;Kein 'text'-Feld in der Antwort&quot;);</span>
+<span class="nc" id="L304">        int start = json.indexOf('&quot;', textIdx + 7) + 1;</span>
+        // Escaped JSON-String auslesen
+<span class="nc" id="L306">        StringBuilder sb = new StringBuilder();</span>
+<span class="nc bnc" id="L307" title="All 2 branches missed.">        for (int i = start; i &lt; json.length(); i++) {</span>
+<span class="nc" id="L308">            char c = json.charAt(i);</span>
+<span class="nc bnc" id="L309" title="All 4 branches missed.">            if (c == '\\' &amp;&amp; i + 1 &lt; json.length()) {</span>
+<span class="nc" id="L310">                char next = json.charAt(i + 1);</span>
+<span class="nc bnc" id="L311" title="All 2 branches missed.">                if (next == '&quot;') { sb.append('&quot;'); i++; }</span>
+<span class="nc bnc" id="L312" title="All 2 branches missed.">                else if (next == 'n') { sb.append('\n'); i++; }</span>
+<span class="nc bnc" id="L313" title="All 2 branches missed.">                else if (next == '\\') { sb.append('\\'); i++; }</span>
+<span class="nc" id="L314">                else sb.append(c);</span>
+<span class="nc bnc" id="L315" title="All 2 branches missed.">            } else if (c == '&quot;') {</span>
+<span class="nc" id="L316">                break;</span>
+            } else {
+<span class="nc" id="L318">                sb.append(c);</span>
+            }
+        }
+<span class="nc" id="L321">        return sb.toString();</span>
+    }
+
+    /** Extrahiert einen Integer-Wert aus einem einfachen JSON-String. */
+    private int extractInt(String json, String key) {
+<span class="nc" id="L326">        String search = &quot;\&quot;&quot; + key + &quot;\&quot;&quot;;</span>
+<span class="nc" id="L327">        int idx = json.indexOf(search);</span>
+<span class="nc bnc" id="L328" title="All 2 branches missed.">        if (idx &lt; 0) throw new RuntimeException(&quot;Key '&quot; + key + &quot;' nicht gefunden&quot;);</span>
+<span class="nc" id="L329">        int colon = json.indexOf(':', idx + search.length());</span>
+<span class="nc" id="L330">        int start = colon + 1;</span>
+<span class="nc bnc" id="L331" title="All 4 branches missed.">        while (start &lt; json.length() &amp;&amp; json.charAt(start) == ' ') start++;</span>
+<span class="nc" id="L332">        int end = start;</span>
+<span class="nc bnc" id="L333" title="All 4 branches missed.">        while (end &lt; json.length() &amp;&amp; Character.isDigit(json.charAt(end))) end++;</span>
+<span class="nc" id="L334">        return Integer.parseInt(json.substring(start, end));</span>
+    }
+
+    /** Extrahiert einen String-Wert aus einem einfachen JSON-String. */
+    private String extractString(String json, String key) {
+<span class="nc" id="L339">        String search = &quot;\&quot;&quot; + key + &quot;\&quot;&quot;;</span>
+<span class="nc" id="L340">        int idx = json.indexOf(search);</span>
+<span class="nc bnc" id="L341" title="All 2 branches missed.">        if (idx &lt; 0) return &quot;&quot;;</span>
+<span class="nc" id="L342">        int colon = json.indexOf(':', idx + search.length());</span>
+<span class="nc" id="L343">        int start = json.indexOf('&quot;', colon) + 1;</span>
+<span class="nc" id="L344">        int end   = json.indexOf('&quot;', start);</span>
+<span class="nc bnc" id="L345" title="All 2 branches missed.">        return end &gt; start ? json.substring(start, end) : &quot;&quot;;</span>
+    }
+
+    /** Wandelt einen String in ein JSON-konformes String-Literal um. */
+    private String jsonString(String s) {
+<span class="nc" id="L350">        return &quot;\&quot;&quot; + s</span>
+<span class="nc" id="L351">            .replace(&quot;\\&quot;, &quot;\\\\&quot;)</span>
+<span class="nc" id="L352">            .replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;)</span>
+<span class="nc" id="L353">            .replace(&quot;\n&quot;, &quot;\\n&quot;)</span>
+<span class="nc" id="L354">            .replace(&quot;\r&quot;, &quot;\\r&quot;)</span>
+            + &quot;\&quot;&quot;;
+    }
+
+    // ── Datenklasse ──────────────────────────────────────────────────────────
+
+    private static class DateClassification {
+        final int year, month, day;
+<span class="nc" id="L362">        DateClassification(int year, int month, int day) {</span>
+<span class="nc" id="L363">            this.year = year; this.month = month; this.day = day;</span>
+<span class="nc" id="L364">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.11.202310140853</span></div></body></html>
